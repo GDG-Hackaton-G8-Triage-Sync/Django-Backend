@@ -111,6 +111,12 @@ triagesync_backend/
 
 _See full breakdown in the project documentation or below for member responsibilities, collaboration flows, and fairness checks._
 
+
+---
+<div align="center">
+  <h2 style="color:#1976d2; background:#e3f2fd; padding:10px; border-radius:8px;">🔷 MODULE-BASED TEAM ASSIGNMENT</h2>
+</div>
+---
 # 👥 TEAM ASSIGNMENT & FEATURE DISTRIBUTION
 
 
@@ -169,65 +175,13 @@ _See full breakdown in the project documentation or below for member responsibil
 - ✔ Shared responsibility in heavy areas
 - ✔ No bottlenecks
 
-## Feature-Based Task Distribution
 
-Each member owns a feature slice across:
-- models
-- services
-- views
-- serializers
-
-This ensures independence and balanced work.
-
-## Feature Flow (How They Connect)
-
-```
-Login (M1, M2)
-   ↓
-Submit Symptoms (M3)
-   ↓
-AI Processing (M4)
-   ↓
-Validation + Logic (M5)
-   ↓
-Save Data (M6)
-   ↓
-WebSocket Broadcast (M7)
-   ↓
-Dashboard API (M8)
-```
-
-## Layered Team Structure (Hybrid Model)
-
-- **Layer 1: Auth & Security (2 Members)**
-  - Member 1: Auth Core (Login API, JWT, User model)
-  - Member 2: Authorization & Protection (Role-based access, Permissions, WebSocket auth)
-- **Layer 2: API Layer (2 Members)**
-  - Member 3: Patient APIs (/api/triage/, input validation)
-  - Member 4: Dashboard APIs (/api/patients/, sorting & response formatting)
-- **Layer 3: Service Layer (2 Members)**
-  - Member 5: AI Service (OpenAI/Gemini, prompt + response)
-  - Member 6: Triage Logic Service (validation, urgency score, fallback logic)
-- **Layer 4: Data Layer (1 Member + Support)**
-  - Member 7: Database Engineer (models, migrations, relationships)
-- **Layer 5: Real-Time System (1 Member + Support)**
-  - Member 8: WebSocket Engineer (Django Channels, Redis, live updates)
-- **Layer 6: Integration (Shared)**
-  - Everyone contributes, led by Member 1 (Lead) and Member 8 (Testing)
-
-## Why This Approach?
-
-- ✔ Parallel development: Everyone can work independently
-- ✔ Less blocking: No waiting for other modules
-- ✔ Clear ownership: Each feature = one owner
-- ✔ Easier debugging: You know exactly who owns what
-- ✔ Keeps Django clean: apps + services respected
-- ✔ Keeps team fast: parallel development
-- ✔ Keeps features connected: not isolated
-- ✔ Prevents chaos: clearer than feature-based only
 
 ---
-
+<div align="center">
+  <h2 style="color:#388e3c; background:#e8f5e9; padding:10px; border-radius:8px;">🟢 FEATURE-BASED TEAM ASSIGNMENT</h2>
+</div>
+---
 # 🧑‍💻 TEAM ASSIGNMENT: SEPARATE FEATURE-BASED APPROACH
 
 ## Member-by-Member Feature Ownership
@@ -333,6 +287,11 @@ Dashboard API (M8)
 
 ---
 
+---
+<div align="center">
+  <h2 style="color:#f57c00; background:#fff3e0; padding:10px; border-radius:8px;">🟠 HYBRID TEAM ASSIGNMENT (BEST VERSION)</h2>
+</div>
+---
 ## FINAL HYBRID TEAM DISTRIBUTION (BEST VERSION)
 
 ### 🔐 LAYER 1: AUTH & SECURITY (2 MEMBERS)
@@ -399,6 +358,12 @@ Dashboard API (M8)
 
 # 🏗️ TEAM ASSIGNMENT APPROACHES
 
+---
+
+<div align="center">
+  <h2 style="color:#1976d2; background:#e3f2fd; padding:10px; border-radius:8px;">🔷 1. MODULE-BASED APPROACH</h2>
+</div>
+---
 ## 1. Module-Based Approach
 - Each team member owns a Django app/module (e.g., authentication, patients, triage, realtime, dashboard, core).
 - Responsibilities are divided by technical boundaries (models, views, serializers, services, tests) within each module.
@@ -406,6 +371,12 @@ Dashboard API (M8)
 - **Pros:** Clear code ownership, easy onboarding for new members.
 - **Cons:** Can create bottlenecks if features span multiple modules; less parallelism for feature delivery.
 
+---
+
+<div align="center">
+  <h2 style="color:#388e3c; background:#e8f5e9; padding:10px; border-radius:8px;">🟢 2. FEATURE-BASED APPROACH</h2>
+</div>
+---
 ## 2. Feature-Based Approach
 - Each member owns a feature slice (e.g., authentication, symptom submission, AI processing, triage logic, data management, real-time, dashboard, integration/testing).
 - Responsibilities span across modules (models, services, views, serializers) for their feature.
@@ -413,6 +384,12 @@ Dashboard API (M8)
 - **Pros:** Parallel development, clear feature ownership, easier debugging.
 - **Cons:** Requires strong communication to avoid code conflicts; onboarding can be more complex.
 
+---
+
+<div align="center">
+  <h2 style="color:#f57c00; background:#fff3e0; padding:10px; border-radius:8px;">🟠 3. HYBRID APPROACH (RECOMMENDED)</h2>
+</div>
+---
 ## 3. Hybrid Approach (Recommended)
 - Combines module and feature-based strategies.
 - Members are assigned to layers (Auth & Security, API, Service, Data, Real-Time, Integration) and also own features within those layers.
