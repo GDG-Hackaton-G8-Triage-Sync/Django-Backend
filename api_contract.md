@@ -21,38 +21,75 @@
 
 This is the main UI for healthcare staff
 
-### 📋 1.1 GET PRIORITIZED PATIENT QUEUE
-**GET** /api/dashboard/staff/patients/
+
+### 📋 1.1 GET STAFF QUEUE (MOCK)
+**GET** /api/dashboard/staff/queue/
 **Access:** Staff only
 **Response:**
-[
-  {
-    "id": 101,
-    "description": "Chest pain and sweating",
-    "priority": 1,
-    "urgency_score": 95,
-    "condition": "Cardiac Event",
-    "status": "waiting",
-    "created_at": "2026-04-14T10:30:00Z"
-  }
-]
+```
+{
+  "total": 2,
+  "queue": [
+    {
+      "session_id": "TS-1111",
+      "priority_level": 1,
+      "urgency_score": 98,
+      "wait_time_seconds": 240
+    },
+    {
+      "session_id": "TS-2222",
+      "priority_level": 2,
+      "urgency_score": 85,
+      "wait_time_seconds": 600
+    }
+  ]
+}
+```
 **Behavior:**
-- Sorted by urgency_score DESC
-- Real-time updates via WebSocket
-- New patients appear at top
+- Placeholder/mock data for demo
 
 ### 🔍 1.2 FILTER PATIENTS (OPTIONAL BUT USEFUL)
 **GET** /api/dashboard/staff/patients/?priority=1
 or
 **GET** /api/dashboard/staff/patients/?status=waiting
 
-### 🔄 1.3 UPDATE PATIENT STATUS
-**PATCH** /api/dashboard/staff/patient/{id}/status/
-**Request:**
+
+### 1.2 GET PATIENT DETAIL (MOCK)
+**GET** /api/dashboard/staff/patient/{session_id}/
+**Response:**
+```
 {
-  "status": "in_progress"
+  "session_id": "TS-1111",
+  "symptoms": "Chest pain...",
+  "vitals": {
+    "hr": 110,
+    "spo2": 92
+  },
+  "ai_reasoning": {
+    "condition": "ACS"
+  }
 }
-Status values: waiting | in_progress | completed
+```
+**Behavior:**
+- Placeholder/mock data for demo
+
+### 1.3 OVERRIDE PRIORITY (MOCK)
+**POST** /api/dashboard/staff/patient/{session_id}/override/
+**Request:**
+```
+{
+  "new_priority": 2,
+  "reason": "Clinical observation"
+}
+```
+**Response:**
+```
+{
+  "success": true
+}
+```
+**Behavior:**
+- Placeholder/mock data for demo
 
 ## ⚡ STAFF REAL-TIME EVENTS (Flutter WebSocket)
 **EVENT: NEW PATIENT**
