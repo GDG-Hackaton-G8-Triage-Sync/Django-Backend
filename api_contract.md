@@ -1,4 +1,147 @@
-# API Contract Documentation – TriageSync Backend
+
+# 📡 🔥 UPDATED API CONTRACT (WITH STAFF + ADMIN DASHBOARD)
+
+## 👥 USER ROLES (FINAL)
+| Role    | Description                |
+|---------|----------------------------|
+| patient | submits symptoms           |
+| staff   | views real-time queue      |
+| admin   | manages system + monitoring|
+
+## 🔐 ROLE RULES
+| Endpoint           | Patient | Staff | Admin |
+|--------------------|:-------:|:-----:|:-----:|
+| Submit symptoms    |   ✅    |  ❌   |  ❌   |
+| View dashboard     |   ❌    |  ✅   |  ✅   |
+| Admin controls     |   ❌    |  ❌   |  ✅   |
+
+---
+
+## 📊 1. STAFF DASHBOARD API (Flutter Integration)
+
+This is the main UI for healthcare staff
+
+### 📋 1.1 GET PRIORITIZED PATIENT QUEUE
+**GET** /api/dashboard/staff/patients/
+**Access:** Staff only
+**Response:**
+[
+  {
+    "id": 101,
+    "description": "Chest pain and sweating",
+    "priority": 1,
+    "urgency_score": 95,
+    "condition": "Cardiac Event",
+    "status": "waiting",
+    "created_at": "2026-04-14T10:30:00Z"
+  }
+]
+**Behavior:**
+- Sorted by urgency_score DESC
+- Real-time updates via WebSocket
+- New patients appear at top
+
+### 🔍 1.2 FILTER PATIENTS (OPTIONAL BUT USEFUL)
+**GET** /api/dashboard/staff/patients/?priority=1
+or
+**GET** /api/dashboard/staff/patients/?status=waiting
+
+### 🔄 1.3 UPDATE PATIENT STATUS
+**PATCH** /api/dashboard/staff/patient/{id}/status/
+**Request:**
+{
+  "status": "in_progress"
+}
+Status values: waiting | in_progress | completed
+
+## ⚡ STAFF REAL-TIME EVENTS (Flutter WebSocket)
+**EVENT: NEW PATIENT**
+{
+  "type": "patient_created",
+  "data": {
+    "id": 101,
+    "priority": 1,
+    "urgency_score": 95
+  }
+}
+**EVENT: PRIORITY UPDATE**
+{
+  "type": "priority_update",
+  "data": {
+    "id": 101,
+    "priority": 1,
+    "urgency_score": 98
+  }
+}
+**EVENT: CRITICAL ALERT 🚨**
+{
+  "type": "critical_alert",
+  "message": "Critical patient detected!",
+  "data": {
+    "id": 101,
+    "priority": 1
+  }
+}
+
+## 🛠️ 2. ADMIN DASHBOARD API (SYSTEM CONTROL)
+
+This is NOT for demo UI only, but adds serious value.
+
+### 📊 2.1 SYSTEM OVERVIEW
+**GET** /api/dashboard/admin/overview/
+**Response:**
+{
+  "total_patients": 120,
+  "waiting": 45,
+  "in_progress": 30,
+  "completed": 45,
+  "critical_cases": 10
+}
+
+### 📈 2.2 GET ANALYTICS (OPTIONAL)
+**GET** /api/dashboard/admin/analytics/
+**Response:**
+{
+  "avg_urgency_score": 67,
+  "peak_hour": "14:00",
+  "common_conditions": ["Cardiac Event", "Migraine"]
+}
+
+### 👥 2.3 MANAGE USERS
+Get users: **GET** /api/admin/users/
+Change role: **PATCH** /api/admin/users/{id}/role/
+{
+  "role": "staff"
+}
+
+### 🚫 2.4 DELETE PATIENT (ADMIN CONTROL)
+**DELETE** /api/admin/patient/{id}/
+
+## 📡 3. FLUTTER INTEGRATION GUIDE
+### 📱 STAFF APP SCREENS
+1. Login Screen → /api/auth/login/
+2. Dashboard Screen → /api/dashboard/staff/patients/
+   - WebSocket: ws://server/ws/triage/
+3. Status Update Button → PATCH /status/
+
+### 📱 ADMIN APP SCREENS
+1. Admin Dashboard → /api/dashboard/admin/overview/
+2. Analytics Page → /analytics/
+3. User Management → /admin/users/
+
+## ⚙️ 4. IMPORTANT BACKEND RULES
+### 🔐 Role Enforcement (VERY IMPORTANT)
+- Staff endpoints → IsStaff
+- Admin endpoints → IsAdmin
+- Patient endpoints → IsPatient
+### ⚡ Real-Time Trigger Points
+WebSocket MUST trigger on:
+- new patient created
+- triage completed
+- priority updated
+- status changed
+### 🧠 Critical Case Rule
+if priority == 1 → trigger critical_alert
 
 ## 1. Base Information
 - **Base URL:** https://your-domain.com/api/
