@@ -14,8 +14,12 @@ This timeline is based on the current team structure, responsibilities, and proj
 
 ## Day 2 (April 16)
 - Members 1 & 2: Implement core response, exception, and permission utilities
-- Members 3: Patient submission endpoint, input validation
-- Member 4: Dashboard API (staff queue, filtering)
+- Member 3: Patient submission endpoint, input validation
+- Member 4: Dashboard API — implement staff endpoints (mock/placeholder):
+	- GET /dashboard/staff/queue/
+	- GET /dashboard/staff/patient/{session_id}/
+	- POST /dashboard/staff/patient/{session_id}/override/
+	- (Note: These endpoints return mock/placeholder data for demo/testing)
 - Members 5 & 6: AI service, triage logic, validation base
 - Member 7: Models, migrations, admin registration
 - Member 8: WebSocket consumer, event structure
