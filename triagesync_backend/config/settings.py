@@ -43,12 +43,12 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
-    "apps.authentication",
-    "apps.patients",
-    "apps.triage",
-    "apps.realtime",
-    "apps.dashboard",
-    "apps.core",
+    "triagesync_backend.apps.authentication",
+    "triagesync_backend.apps.patients",
+    "triagesync_backend.apps.triage",
+    "triagesync_backend.apps.realtime",
+    "triagesync_backend.apps.dashboard",
+    "triagesync_backend.apps.core",
 ]
 
 MIDDLEWARE = [
