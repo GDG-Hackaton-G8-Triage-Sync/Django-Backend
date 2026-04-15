@@ -32,6 +32,48 @@ class AdminAnalyticsView(APIView):
             "peak_hour": "14:00",
             "common_conditions": ["Cardiac Event", "Migraine"]
         })
+
+class StaffQueueView(APIView):
+    def get(self, request):
+        # Mock queue data
+        return Response({
+            "total": 2,
+            "queue": [
+                {
+                    "session_id": "TS-1111",
+                    "priority_level": 1,
+                    "urgency_score": 98,
+                    "wait_time_seconds": 240
+                },
+                {
+                    "session_id": "TS-2222",
+                    "priority_level": 2,
+                    "urgency_score": 85,
+                    "wait_time_seconds": 600
+                }
+            ]
+        })
+
+class StaffPatientDetailView(APIView):
+    def get(self, request, session_id):
+        # Mock patient detail data
+        return Response({
+            "session_id": session_id,
+            "symptoms": "Chest pain...",
+            "vitals": {
+                "hr": 110,
+                "spo2": 92
+            },
+            "ai_reasoning": {
+                "condition": "ACS"
+            }
+        })
+
+class StaffPriorityOverrideView(APIView):
+    def post(self, request, session_id):
+        # Mock override response
+        return Response({"success": True})
+
 class DashboardPatientListView(ListAPIView):
     serializer_class = DashboardPatientSerializer
     permission_classes = [IsAuthenticated, IsMedicalStaff]
