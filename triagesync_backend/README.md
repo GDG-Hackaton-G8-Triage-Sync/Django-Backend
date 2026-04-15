@@ -97,8 +97,13 @@ triagesync_backend/
 │ │   ├── utils.py
 │ │   ├── constants.py
 │ │   ├── exceptions.py
-│ │   ├── response.py               # standard API response format
+│ │   ├── response.py               # standard API response format (use this, do NOT use responses.py)
 │ │   └── middleware.py
+---
+## ⚠️ Naming Best Practice
+
+> Only use <b>core/response.py</b> for response utilities. <br>
+> <b>Do NOT use core/responses.py</b> to avoid confusion and duplication.
 │
 ├── requirements.txt
 ├── manage.py
