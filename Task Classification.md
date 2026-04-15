@@ -64,15 +64,21 @@
 dashboard/
 
 ---
+
 ### 👤 <span style="color:#7b1fa2">MEMBER 4 — Dashboard APIs (Output Layer)</span> 📊
 **🛠️ Owns:**
   - dashboard/
     - views.py, serializers.py
 **🎯 Responsibilities:**
   - Staff: patient queue, filtering, sorting
+    - Implements and maintains staff endpoints:
+      - GET /dashboard/staff/queue/ (mock/placeholder)
+      - GET /dashboard/staff/patient/{session_id}/ (mock/placeholder)
+      - POST /dashboard/staff/patient/{session_id}/override/ (mock/placeholder)
   - Admin: overview stats, analytics
 **➕ Real Work:**
   - Aggregation queries (counts, averages)
+  - Ensure staff endpoints are available for frontend integration (currently mock/placeholder responses for demo/testing)
 **🤝 Works With:** M6 (logic data), M7 (queries), M2 (permissions), M8 (real-time updates)
 
 
