@@ -55,7 +55,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "apps.core.middleware.RequestIDMiddleware",
+    "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
