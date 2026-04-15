@@ -1,8 +1,30 @@
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+
+class AdminUserListView(APIView):
+    def get(self, request):
+        # Mock user list
+        return Response([
+            {"id": 1, "username": "admin", "role": "admin"},
+            {"id": 2, "username": "staff1", "role": "staff"},
+            {"id": 3, "username": "patient1", "role": "patient"},
+        ])
+
+class AdminUserRoleUpdateView(APIView):
+    def patch(self, request, id):
+        # Mock role update
+        return Response({"id": id, "role": request.data.get("role", "staff")}, status=status.HTTP_200_OK)
+
+class AdminPatientDeleteView(APIView):
+    def delete(self, request, id):
+        # Mock patient delete
+        return Response({"id": id, "deleted": True}, status=status.HTTP_204_NO_CONTENT)
 
 from .serializers import RegisterSerializer
 
