@@ -1,21 +1,16 @@
 from django.urls import path
+
+
 from .views import (
-    StaffPatientQueueView,
-    UpdatePatientStatusView,
+    DashboardPatientListView,
+    StaffPatientStatusUpdateView,
     AdminOverviewView,
     AdminAnalyticsView,
-    UpdatePatientPriorityView,
-    VerifyPatientView,
 )
 
 urlpatterns = [
-    # STAFF
-    path("staff/patients/", StaffPatientQueueView.as_view()),
-    path("staff/patient/<int:id>/status/", UpdatePatientStatusView.as_view()),
-    path("staff/patient/<int:id>/priority/", UpdatePatientPriorityView.as_view()),
-    path("staff/patient/<int:id>/verify/", VerifyPatientView.as_view()),
-
-    # ADMIN
-    path("admin/overview/", AdminOverviewView.as_view()),
-    path("admin/analytics/", AdminAnalyticsView.as_view()),
+    path("patients/", DashboardPatientListView.as_view(), name="dashboard-patients"),
+    path("staff/patient/<int:id>/status/", StaffPatientStatusUpdateView.as_view(), name="staff-patient-status-update"),
+    path("admin/overview/", AdminOverviewView.as_view(), name="admin-overview"),
+    path("admin/analytics/", AdminAnalyticsView.as_view(), name="admin-analytics"),
 ]
