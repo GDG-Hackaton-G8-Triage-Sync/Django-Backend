@@ -9,27 +9,16 @@ from apps.core.response import success_response, error_response
 
 
 class TriageEvaluateView(APIView):
-    permission_classes = [IsAuthenticated, IsDoctor]
 
     def post(self, request):
-        serializer = TriageInputSerializer(data=request.data)
+        symptoms = request.data.get("symptoms")
 
-        if not serializer.is_valid():
-            return error_response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
+        if not symptoms:
+            return Response(
+                {"error": "Symptoms are required"},
+                status=400
             )
 
-        symptoms = serializer.validated_data["symptoms"]
+        result = evaluate_triage(symptoms)
 
-        try:
-            result = evaluate_triage(symptoms)
-
-            return success_response(result)
-
-        except Exception:
-            
-            return error_response(
-                {"message": "Triage processing failed"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return Response(result)
