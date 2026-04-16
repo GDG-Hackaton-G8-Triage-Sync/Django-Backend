@@ -58,7 +58,7 @@ MIDDLEWARE = [
     "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "triagesync_backend.config.urls"
 
 TEMPLATES = [
     {
@@ -75,8 +75,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
+WSGI_APPLICATION = "triagesync_backend.config.wsgi.application"
+ASGI_APPLICATION = "triagesync_backend.config.asgi.application"
 
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
