@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 
-from apps.patients.models import PatientSubmission
+from triagesync_backend.apps.patients.models import PatientSubmission
 
 from .serializers import DashboardPatientSerializer
 class StaffPatientStatusUpdateView(APIView):
