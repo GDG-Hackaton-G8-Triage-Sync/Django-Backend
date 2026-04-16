@@ -1,7 +1,6 @@
 from rest_framework import serializers
-from apps.patients.models import PatientSubmission
 
-
+from triagesync_backend.apps.patients.models import PatientSubmission
 class DashboardPatientSerializer(serializers.ModelSerializer):
     # 🔁 Rename fields to match API contract
     description = serializers.CharField(source="symptoms")
