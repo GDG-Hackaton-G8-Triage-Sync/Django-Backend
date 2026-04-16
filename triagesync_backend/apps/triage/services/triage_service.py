@@ -27,7 +27,7 @@ def process_triage(ai_output):
     }
 
 
-def evaluate_triage(symptoms: str, patient_id: int = None):
+def evaluate_triage(symptoms: str):
     validate_symptoms(symptoms)
 
     priority = infer_priority(symptoms)
@@ -38,14 +38,6 @@ def evaluate_triage(symptoms: str, patient_id: int = None):
     }
 
     final_result = process_triage(ai_output)
-
-    # --- M8: broadcast to all connected WebSocket clients ---
-    if patient_id is not None:
-        broadcast_patient_created(
-            patient_id=patient_id,
-            priority=final_result["priority"],
-            urgency_score=final_result["urgency_score"],
-        )
 
     return {
         "ai_priority": priority,
