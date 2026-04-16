@@ -1,6 +1,11 @@
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.generics import ListAPIView
+
+from triagesync_backend.apps.patients.models import PatientSubmission
+
 from .serializers import DashboardPatientSerializer
 from .services.dashboard_service import get_patient_queue
 from apps.patients.models import PatientSubmission
