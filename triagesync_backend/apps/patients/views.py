@@ -1,13 +1,14 @@
-from rest_framework import status
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework.views import APIView
+from .serializers import PatientSerializer
 
-from .serializers import PatientSubmissionSerializer
+@api_view(['POST'])
+def submit_triage(request):
 
+    serializer = PatientSerializer(data=request.data)
 
-class PatientSubmissionView(APIView):
-    def post(self, request):
-        serializer = PatientSubmissionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+    if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({"message":"Triage submitted"})
+
+    return Response(serializer.errors)
