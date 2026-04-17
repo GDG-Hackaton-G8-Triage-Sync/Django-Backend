@@ -1,6 +1,3 @@
-"""
-Shared utility functions
-"""
 from datetime import datetime
 from django.utils import timezone
 
@@ -39,10 +36,10 @@ def sanitize_input(text, max_length=None):
     """Sanitize user input"""
     if not text:
         return ""
-    
+
     text = text.strip()
-    
+
     if max_length and len(text) > max_length:
         text = text[:max_length]
-    
+
     return text
