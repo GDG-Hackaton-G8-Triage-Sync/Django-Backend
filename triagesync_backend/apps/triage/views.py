@@ -24,6 +24,8 @@ from .services.ai_service import (
 from PyPDF2 import PdfReader
 
 from .services.triage_service import evaluate_triage
+from .serializers import TriageInputSerializer
+from apps.authentication.permissions import IsDoctor
 
 MAX_INPUT_LENGTH = 500
 
