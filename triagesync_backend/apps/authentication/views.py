@@ -1,21 +1,31 @@
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
-
-from .serializers import RegisterSerializer
-
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import RegisterSerializer, LoginSerializer
+from .services.auth_service import get_tokens_for_user
 
 class RegisterView(APIView):
-    permission_classes = [AllowAny]
-
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        return Response({"id": user.id, "username": user.username}, status=status.HTTP_201_CREATED)
+
+        tokens = get_tokens_for_user(user)
+
+        return Response({
+            "user": serializer.data,
+            "tokens": tokens
+        })
 
 
-class LoginView(TokenObtainPairView):
-    permission_classes = [AllowAny]
+class LoginView(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data
+        tokens = get_tokens_for_user(user)
+
+        return Response({
+            "tokens": tokens
+        })
