@@ -47,13 +47,22 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
         return None
 
     # Dynamically fetch available models for this API key
+    import logging
+    logger = logging.getLogger("triage.ai")
     try:
         available_models = genai.list_models()
         # Only include models that support generateContent
+        # Only use models that are likely free tier: name contains 'free' or 'flash'
         model_priority = [
-            m.name for m in available_models if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods
+            m.name for m in available_models
+            if hasattr(m, 'supported_generation_methods')
+            and 'generateContent' in m.supported_generation_methods
+            and (('free' in m.name.lower()) or ('flash' in m.name.lower()))
         ]
+        logger.info(f"[Gemini] Available models for this API key: {[m.name for m in available_models]}")
+        logger.info(f"[Gemini] Free/flash models supporting generateContent: {model_priority}")
     except Exception as e:
+        logger.error(f"[Gemini] Error fetching available models: {e}")
         # Fallback to static list if fetching fails
         model_priority = [
             "gemini-2.5-flash",
@@ -61,14 +70,20 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
             "gemini-1.5-pro",
             "gemini-pro"
         ]
+        logger.info(f"[Gemini] Using static model list: {model_priority}")
     # If a specific model_name is requested, try it first
     if model_name and model_name not in model_priority:
         model_priority.insert(0, model_name)
 
+    logger.info(f"[Gemini] Model fallback order: {model_priority}")
     for m in model_priority:
+        logger.info(f"[Gemini] Trying model: {m}")
         result = retry_model(m, prompt)
         if result:
+            logger.info(f"[Gemini] Model {m} succeeded.")
             return result
+        else:
+            logger.warning(f"[Gemini] Model {m} failed.")
 
     # If all models fail, return error summary for staff
     return json.dumps({
