@@ -10,11 +10,15 @@ Django
 Django REST Framework
 JWT authentication (SimpleJWT)
 Django Channels (WebSocket support)
+
+
 ##Quick Start
 Create and activate virtual environment.
 Install dependencies: pip install -r requirements.txt
 Apply migrations: python manage.py migrate
 Run server: python manage.py runserver
+
+
 ##Project Layout
 config: central Django configuration (settings, URLs, ASGI/WSGI)
 apps.authentication: user and auth flows
