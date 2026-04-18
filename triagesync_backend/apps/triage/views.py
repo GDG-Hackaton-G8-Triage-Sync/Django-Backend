@@ -6,6 +6,7 @@ from rest_framework import status
 from .services.triage_service import evaluate_triage
 from .serializers import TriageInputSerializer
 from apps.authentication.permissions import IsDoctor
+from apps.core.response import success_response
 
 
 class TriageEvaluateView(APIView):
