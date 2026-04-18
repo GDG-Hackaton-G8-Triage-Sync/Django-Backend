@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .serializers import RegisterSerializer, LoginSerializer
 from .services.auth_service import get_tokens_for_user
+from apps.core.response import success_response, error_response
 
 class RegisterView(APIView):
     def post(self, request):
