@@ -1,23 +1,22 @@
 from .models import TriageSession
-from patients.models import Patient
 
 
 def get_staff_queue():
     return TriageSession.objects.filter(
-        status="waiting"
+        status="in_queue"
     ).order_by("-urgency_score")
 
 
-def get_current_session(patient):
-    return TriageSession.objects.filter(
-        patient=patient
-    ).order_by("-created_at").first()
+def get_current_session():
+    return TriageSession.objects.order_by(
+        "-created_at"
+    ).first()
 
 
 def get_patient_detail(session_id):
-    return TriageSession.objects.select_related(
-        "patient"
-    ).get(session_id=session_id)
+    return TriageSession.objects.get(
+        session_id=session_id
+    )
 
 
 def override_priority(session_id, new_priority):
@@ -25,7 +24,7 @@ def override_priority(session_id, new_priority):
         session_id=session_id
     )
 
-    session.priority_level = int(new_priority)
+    session.priority_level = new_priority
     session.save()
 
     reorder_queue()
@@ -35,7 +34,7 @@ def override_priority(session_id, new_priority):
 
 def reorder_queue():
     sessions = TriageSession.objects.filter(
-        status="waiting"
+        status="in_queue"
     ).order_by("-urgency_score")
 
     for index, session in enumerate(sessions, start=1):
@@ -43,11 +42,10 @@ def reorder_queue():
         session.save()
 
 
-def create_triage_session(patient,description ):
+def create_triage_session(symptoms):
     return TriageSession.objects.create(
-        patient=patient,
-        symptoms=description,
-        status="waiting"
+        symptoms=symptoms,
+        status="processing"
     )
 def update_status(session_id, status):
     session = TriageSession.objects.get(
