@@ -1,8 +1,13 @@
+"""
+Shared constants for TriageSync Backend
+"""
+
+# User Roles
 class UserRole:
     PATIENT = 'patient'
     STAFF = 'staff'
     ADMIN = 'admin'
-
+    
     CHOICES = [
         (PATIENT, 'Patient'),
         (STAFF, 'Staff'),
@@ -10,11 +15,12 @@ class UserRole:
     ]
 
 
+# Patient Status
 class PatientStatus:
     WAITING = 'waiting'
     IN_PROGRESS = 'in_progress'
     COMPLETED = 'completed'
-
+    
     CHOICES = [
         (WAITING, 'Waiting'),
         (IN_PROGRESS, 'In Progress'),
@@ -22,13 +28,14 @@ class PatientStatus:
     ]
 
 
+# Triage Priority Levels
 class TriagePriority:
     CRITICAL = 1      # Life-threatening
     HIGH = 2          # Urgent
     MODERATE = 3      # Moderate
     LOW = 4           # Low urgency
     MINIMAL = 5       # Minimal urgency
-
+    
     CHOICES = [
         (CRITICAL, 'Critical'),
         (HIGH, 'High'),
