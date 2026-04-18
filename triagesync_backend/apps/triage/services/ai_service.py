@@ -21,7 +21,7 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     errors = []
     MAX_RETRIES = 1
-    TIMEOUT_SECONDS = 7
+    TIMEOUT_SECONDS = 3
 
     def try_generate(model, prompt):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
