@@ -5,10 +5,15 @@ from urllib.parse import parse_qsl, urlparse
 
 from dotenv import load_dotenv
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
+print("CWD:", os.getcwd())
+print("BASE_DIR:", BASE_DIR)
+print("ENV FILE EXISTS:", os.path.exists(BASE_DIR / ".env"))
+print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -78,6 +83,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "triagesync_backend.config.wsgi.application"
 ASGI_APPLICATION = "triagesync_backend.config.asgi.application"
 
+
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise ValueError("DATABASE_URL is not set")
@@ -135,3 +141,4 @@ CHANNEL_LAYERS = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", True)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
