@@ -1,18 +1,10 @@
 from rest_framework.views import APIView
-from rest_framework.response import Response
+from .serializers import PatientSubmissionSerializer
 from rest_framework.permissions import IsAuthenticated
 
-from apps.triage.models import TriageItem
 
-from apps.triage.services.ai_service import analyze_symptoms
-from apps.triage.services.triage_service import process_triage
-from apps.realtime.services.broadcast_service import broadcast_new_triage
-from triagesync_backend.apps.patients.serializers import TriageSubmissionSerializer
-
-
-class PatientTriageView(APIView):
-    permission_classes = [IsAuthenticated]
-
+class PatientSubmissionView(APIView):
+    permission_classes = [IsAuthenticated] 
     def post(self, request):
         serializer = TriageSubmissionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
