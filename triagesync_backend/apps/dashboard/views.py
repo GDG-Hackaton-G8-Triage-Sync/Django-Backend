@@ -13,6 +13,11 @@ class StaffPatientStatusUpdateView(APIView):
         # Mock response for status update
         return Response({"id": id, "status": request.data.get("status", "in_progress")}, status=status.HTTP_200_OK)
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .serializers import DashboardPatientSerializer
+from .services.dashboard_service import get_patient_queue
+
 class AdminOverviewView(APIView):
     def get(self, request):
         # Mock admin overview data
@@ -92,3 +97,16 @@ class DashboardPatientListView(ListAPIView):
         serializer = self.get_serializer(queryset, many=True)
 
         return success_response(serializer.data)
+class StaffPatientQueueView(APIView):
+    """
+    GET /api/dashboard/staff/patients/
+    """
+
+    def get(self, request):
+        priority = request.query_params.get("priority")
+        status = request.query_params.get("status")
+
+        patients = get_patient_queue(priority, status)
+        serializer = DashboardPatientSerializer(patients, many=True)
+
+        return Response(serializer.data)
