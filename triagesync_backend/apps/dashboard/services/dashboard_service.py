@@ -1,6 +1,5 @@
 from apps.patients.models import PatientSubmission
 from django.db.models import Avg, Count
-from django.utils import timezone
 
 
 def get_patient_queue(priority=None, status=None):
@@ -61,18 +60,3 @@ def get_admin_analytics():
             .order_by("-count")[:3]
         ),
     }
-
-def update_priority(patient, priority):
-    patient.priority = priority
-    patient.save()
-    return patient
-
-
-def verify_patient(patient, user):
-    if patient.verified_at:
-        return None
-
-    patient.verified_by = user.username
-    patient.verified_at = timezone.now()
-    patient.save()
-    return patient
