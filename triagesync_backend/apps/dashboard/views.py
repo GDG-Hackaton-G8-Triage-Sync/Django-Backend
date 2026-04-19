@@ -18,3 +18,21 @@ class StaffPatientQueueView(APIView):
         serializer = DashboardPatientSerializer(patients, many=True)
 
         return Response(serializer.data)
+
+from .services.dashboard_service import update_patient_status
+
+
+class UpdatePatientStatusView(APIView):
+    """
+    PATCH /api/dashboard/staff/patient/{id}/status/
+    """
+
+    def patch(self, request, id):
+        status = request.data.get("status")
+
+        patient = update_patient_status(id, status)
+
+        if not patient:
+            return Response({"error": "Patient not found"}, status=404)
+
+        return Response({"message": "Status updated"})
