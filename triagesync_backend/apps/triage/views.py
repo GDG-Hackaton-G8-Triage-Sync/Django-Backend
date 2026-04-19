@@ -36,8 +36,8 @@ class TriageAIView(APIView):
                 "details": str(e)
             }, status=status.HTTP_502_BAD_GATEWAY)
 
-        # If the AI returned an error object, handle it gracefully
-        if isinstance(result, dict) and result.get("error") == "AI unavailable, staff review required":
+        # If the AI returned an error object, handle it gracefully (match error string or error_types)
+        if isinstance(result, dict) and result.get("error"):
             return Response({
                 "error": "AI unavailable.",
                 "message": "Sorry, the AI service is currently unavailable or over quota. Your case will be flagged for staff review. No automated triage decision could be made.",
@@ -45,7 +45,12 @@ class TriageAIView(APIView):
                 "user_description": result.get("user_description", "")
             }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        serializer = TriageAIResponseSerializer(data=result)
+        # Only pass expected fields to the serializer
+        expected_fields = [
+            "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation"
+        ]
+        filtered_result = {k: v for k, v in result.items() if k in expected_fields}
+        serializer = TriageAIResponseSerializer(data=filtered_result)
         if serializer.is_valid():
             return Response(serializer.data)
         else:

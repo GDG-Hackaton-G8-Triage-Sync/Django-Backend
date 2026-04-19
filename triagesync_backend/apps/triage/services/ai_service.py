@@ -41,7 +41,14 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
                 return response.text
             except Exception as e:
                 last_exc = e
-                errors.append(f"{model_name} (attempt {attempt}): {e}")
+                err_str = str(e)
+                # Granular error classification
+                if "quota" in err_str.lower() or "exceeded" in err_str.lower():
+                    errors.append(f"{model_name} (attempt {attempt}): Quota exceeded or out of limit: {e}")
+                elif "404" in err_str or "not found" in err_str.lower():
+                    errors.append(f"{model_name} (attempt {attempt}): Model not found or not enabled: {e}")
+                else:
+                    errors.append(f"{model_name} (attempt {attempt}): Other error: {e}")
                 # Exponential backoff
                 time.sleep(2 ** (attempt - 1))
         return None
@@ -85,11 +92,21 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
         else:
             logger.warning(f"[Gemini] Model {m} failed.")
 
-    # If all models fail, return error summary for staff
+    # If all models fail, return error summary for staff with granular error details
+    # Optionally, classify the overall error type for the frontend
+    error_types = set()
+    for err in errors:
+        if "Quota exceeded" in err:
+            error_types.add("quota")
+        elif "Model not found" in err:
+            error_types.add("not_found")
+        else:
+            error_types.add("other")
     return json.dumps({
         "error": "AI unavailable, staff review required",
         "user_description": user_description,
-        "details": errors
+        "details": errors,
+        "error_types": list(error_types)
     })
 
 def get_triage_recommendation(description, model_name=None):
@@ -113,13 +130,30 @@ def get_triage_recommendation(description, model_name=None):
     print("[DEBUG] Cleaned AI response:", repr(cleaned))
     # Try direct JSON parse first
     try:
-        return json.loads(cleaned)
+        data = json.loads(cleaned)
+        # Map priority_level to priority for backward compatibility, and remove string priority if present
+        if "priority_level" in data:
+            data["priority_level"] = int(data["priority_level"])
+            data.pop("priority", None)  # Remove string priority if present
+        required_fields = ["priority_level", "urgency_score", "condition", "category", "is_critical", "explanation"]
+        for field in required_fields:
+            if field not in data:
+                return {"error": f"'{field}' field missing in AI response", "raw": cleaned}
+        return data
     except Exception:
         # Fallback: extract JSON object from string using regex
         match = re.search(r'\{.*\}', cleaned, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0))
+                data = json.loads(match.group(0))
+                if "priority_level" in data:
+                    data["priority_level"] = int(data["priority_level"])
+                    data.pop("priority", None)
+                required_fields = ["priority_level", "urgency_score", "condition", "category", "is_critical", "explanation"]
+                for field in required_fields:
+                    if field not in data:
+                        return {"error": f"'{field}' field missing in AI response", "raw": cleaned}
+                return data
             except Exception as e2:
                 return {"error": "AI response is not valid JSON after regex extraction", "raw": cleaned, "regex_error": str(e2)}
         return {"error": "AI response is not valid JSON", "raw": cleaned}
