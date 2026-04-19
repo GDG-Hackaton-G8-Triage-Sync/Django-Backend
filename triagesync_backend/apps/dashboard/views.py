@@ -108,3 +108,15 @@ class AdminOverviewView(APIView):
     def get(self, request):
         data = get_admin_overview()
         return Response(data)
+    
+from .services.dashboard_service import get_admin_analytics
+
+
+class AdminAnalyticsView(APIView):
+    """
+    GET /api/dashboard/admin/analytics/
+    """
+
+    def get(self, request):
+        data = get_admin_analytics()
+        return Response(data)
