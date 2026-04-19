@@ -1,13 +1,12 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.utils import timezone
 from .serializers import PatientSubmissionSerializer
-from .models import PatientSubmission
-import uuid
+from rest_framework.permissions import IsAuthenticated
+
 
 class PatientSubmissionView(APIView):
+    permission_classes = [IsAuthenticated] 
     def post(self, request):
         serializer = PatientSubmissionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
