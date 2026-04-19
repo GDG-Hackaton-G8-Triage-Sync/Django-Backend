@@ -96,3 +96,15 @@ class UpdatePatientStatusView(APIView):
             return Response({"error": "Patient not found"}, status=404)
 
         return Response({"message": "Status updated"})
+    
+from .services.dashboard_service import get_admin_overview
+
+
+class AdminOverviewView(APIView):
+    """
+    GET /api/dashboard/admin/overview/
+    """
+
+    def get(self, request):
+        data = get_admin_overview()
+        return Response(data)
