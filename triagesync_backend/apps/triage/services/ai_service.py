@@ -3,6 +3,7 @@ import os
 import json
 import re
 import time
+import logging
 import concurrent.futures
 import google.generativeai as genai
 from .prompt_engine import build_triage_prompt
@@ -54,7 +55,6 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
         return None
 
     # Dynamically fetch available models for this API key
-    import logging
     logger = logging.getLogger("triage.ai")
     try:
         available_models = genai.list_models()
@@ -109,9 +109,9 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
         "error_types": list(error_types)
     })
 
-def get_triage_recommendation(description, model_name=None):
-    prompt = build_triage_prompt(description)
-    response_text = call_gemini_api(prompt, model_name=model_name, user_description=description)
+def get_triage_recommendation(symptoms, age=None, gender=None, model_name=None):
+    prompt = build_triage_prompt(symptoms, age=age, gender=gender)
+    response_text = call_gemini_api(prompt, model_name=model_name, user_description=symptoms)
     print("[DEBUG] Raw AI response:", repr(response_text))
     # If Gemini returns a JSON error summary, pass it through
     try:

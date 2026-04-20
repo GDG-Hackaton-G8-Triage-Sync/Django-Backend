@@ -10,7 +10,8 @@ from triagesync_backend.apps.triage.services.prompt_engine import build_triage_p
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 
-def test_triage_ai(symptoms):
+def test_triage_ai():
+    symptoms = "45-year-old male presents with chest pain radiating to the left arm, sweating, and shortness of breath."
     genai.configure(api_key=api_key)
     models = list(genai.list_models())
     print("Gemini API key is valid! Available models:")
@@ -35,6 +36,4 @@ def test_triage_ai(symptoms):
     print(response.text)
 
 if __name__ == "__main__":
-    # Example test case
-    symptoms = "45-year-old male presents with chest pain radiating to the left arm, sweating, and shortness of breath."
-    test_triage_ai(symptoms)
+    test_triage_ai()

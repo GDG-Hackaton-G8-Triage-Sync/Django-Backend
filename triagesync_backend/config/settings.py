@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "triagesync_backend.core.payload_sanitizer.PayloadSanitizerMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
