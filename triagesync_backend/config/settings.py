@@ -150,9 +150,17 @@ GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "2"))
 # Per-call wall-clock budget before we abandon this model and move on.
 GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "8"))
 # Explicit allow-list; replaces the old 'flash in name' heuristic.
+# Each model has an independent free-tier quota, so the more we list, the more
+# resilient the pipeline is when one model's daily limit is exhausted. Order is
+# tried left-to-right; models not enabled for the current API key are filtered
+# out at runtime by _resolve_model_priority().
 GEMINI_MODEL_PRIORITY = env_list("GEMINI_MODEL_PRIORITY") or [
     "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
 ]
 # TTL for cached list_models() output (seconds).
 GEMINI_MODEL_LIST_TTL_SECONDS = int(os.getenv("GEMINI_MODEL_LIST_TTL_SECONDS", "600"))

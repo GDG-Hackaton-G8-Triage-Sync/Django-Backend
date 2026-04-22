@@ -228,6 +228,10 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
                 err_type = _classify_model_error(str(e))
                 errors.append(f"{model_name} (attempt {attempt}): {_ERROR_LABELS[err_type]}: {e}")
                 error_types.add(err_type)
+                # Deterministic failures won't clear on an immediate retry --
+                # skip the remaining attempts and fall through to the next model.
+                if err_type in ("quota", "not_found"):
+                    return None
                 time.sleep(2 ** (attempt - 1))
         return None
 
