@@ -15,14 +15,20 @@ object, plus the operational safeguards around the Gemini API call.
 ## 1. What Is Implemented
 
 ### 1.1 Gemini API client (`services/ai_service.py`)
-- **Multi-model priority list** with automatic fallback between `gemini-2.5-flash`
-  and `gemini-1.5-flash` (configurable allow-list).
+- **Multi-model priority list** with automatic fallback across six free-tier
+  models by default (`gemini-2.5-flash`, `gemini-2.5-flash-lite`,
+  `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`,
+  `gemini-1.5-flash-8b`). Each model carries an independent daily quota, so
+  exhausting one simply cascades to the next. Fully configurable allow-list.
 - **Cached `list_models()` discovery.** Thread-safe, TTL-based cache (default
   600 s). Intersects the configured allow-list with models actually enabled
   for the API key. Cache is refreshed lazily and can be invalidated via
   `invalidate_model_list_cache()`.
 - **Retry with exponential backoff.** Each model is tried `GEMINI_MAX_RETRIES`
-  times with `2^(attempt-1)` second sleeps between attempts.
+  times with `2^(attempt-1)` second sleeps between attempts. Deterministic
+  failures (`quota`, `not_found`) short-circuit the retry loop and cascade
+  to the next model immediately — no budget is wasted re-running a call that
+  can't succeed in a 1–2 second window.
 - **Per-call timeout.** Every `generate_content` call runs in a
   `ThreadPoolExecutor` with an `GEMINI_TIMEOUT_SECONDS` wall-clock budget so a
   single hung model cannot stall the endpoint.
@@ -105,7 +111,7 @@ All AI-layer behavior is environment-tunable (defined in `config/settings.py`):
 | `GEMINI_API_KEY` | *(required)* | API key for `google.generativeai`. |
 | `GEMINI_MAX_RETRIES` | `2` | Attempts per model before moving on. |
 | `GEMINI_TIMEOUT_SECONDS` | `8` | Per-call wall-clock budget. |
-| `GEMINI_MODEL_PRIORITY` | `gemini-2.5-flash,gemini-1.5-flash` | Comma-separated allow-list, tried in order. |
+| `GEMINI_MODEL_PRIORITY` | `gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash,gemini-2.0-flash-lite,gemini-1.5-flash,gemini-1.5-flash-8b` | Comma-separated allow-list, tried in order. Models not enabled for the current API key are filtered out at runtime. |
 | `GEMINI_MODEL_LIST_TTL_SECONDS` | `600` | Cache TTL for `list_models()`. |
 | `GEMINI_CIRCUIT_BREAKER_THRESHOLD` | `5` | Consecutive failures before circuit opens. |
 | `GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS` | `30` | Time the circuit stays open. |

@@ -162,8 +162,16 @@ with a rule-based result before returning to the patient.
 - **Injection-safe prompts.** User content is wrapped in delimiter tags and
   pre-stripped of any tag-like tokens.
 - **Bounded latency.** Each model attempt is capped at
-  `GEMINI_TIMEOUT_SECONDS` (default 8 s). Worst-case per request:
-  `len(GEMINI_MODEL_PRIORITY) × GEMINI_MAX_RETRIES × GEMINI_TIMEOUT_SECONDS`.
+  `GEMINI_TIMEOUT_SECONDS` (default 8 s). Worst-case per request on transient
+  errors: `len(GEMINI_MODEL_PRIORITY) × GEMINI_MAX_RETRIES × GEMINI_TIMEOUT_SECONDS`.
+  Deterministic errors (`quota`, `not_found`) short-circuit the retry loop
+  on that model and cascade immediately, so in practice quota-exhausted paths
+  are much faster than the worst-case formula suggests.
+- **Multi-model resilience.** Default priority covers six free-tier models
+  (`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`,
+  `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`). Each
+  has an independent daily quota, so exhausting one simply cascades to the
+  next; models not enabled for the active API key are filtered out at runtime.
 - **Cascade protection.** After `GEMINI_CIRCUIT_BREAKER_THRESHOLD` consecutive
   failures, calls short-circuit to a `circuit_open` error envelope for
   `GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS`.
