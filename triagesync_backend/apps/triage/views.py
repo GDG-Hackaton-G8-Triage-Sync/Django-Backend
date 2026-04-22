@@ -1,13 +1,5 @@
 import re as _re
-
-def is_relevant(text):
-    if not text or not isinstance(text, str):
-        return False
-    keywords = [
-        "pain", "fever", "cough", "fracture", "bleeding", "shortness of breath", "dizzy", "vomiting", "rash", "injury", "trauma", "stroke", "cardiac", "chest", "headache", "infection", "wound", "burn", "swelling", "seizure", "unconscious", "weakness", "nausea", "diarrhea", "palpitation", "collapse"
-    ]
-    text_lower = text.lower()
-    return any(_re.search(r"\b" + _re.escape(kw) + r"\b", text_lower) for kw in keywords)
+import json
 
 # New AI-based triage endpoint
 from .services.ai_service import get_triage_recommendation
@@ -23,17 +15,26 @@ import logging
 
 from .serializers import TriageAIResponseSerializer
 from .services.prompt_engine import build_pdf_triage_prompt
-from .services.ai_service import call_gemini_api
-from .services.fallback_service import compute_fallback_triage
-import json
-
+from .services.ai_service import (
+    call_gemini_api,
+    normalize_ai_response,
+    normalize_age,
+    normalize_gender,
+)
 from PyPDF2 import PdfReader
-
 
 from .services.triage_service import evaluate_triage
 
 MAX_INPUT_LENGTH = 500
 
+def is_relevant(text):
+    if not text or not isinstance(text, str):
+        return False
+    keywords = [
+        "pain", "fever", "cough", "fracture", "bleeding", "shortness of breath", "dizzy", "vomiting", "rash", "injury", "trauma", "stroke", "cardiac", "chest", "headache", "infection", "wound", "burn", "swelling", "seizure", "unconscious", "weakness", "nausea", "diarrhea", "palpitation", "collapse"
+    ]
+    text_lower = text.lower()
+    return any(_re.search(r"\b" + _re.escape(kw) + r"\b", text_lower) for kw in keywords)
 class TriageAIView(APIView):
     permission_classes = [AllowAny]
     def post(self, request):
@@ -70,12 +71,19 @@ class TriageAIView(APIView):
                 "details": str(e)
             }, status=status.HTTP_502_BAD_GATEWAY)
 
-        ai_failed_details = None
+        # AI returned an error envelope (all models failed, circuit open, etc.)
+        # The decision of whether/how to substitute rule-based output is M6's
+        # responsibility ("fallback system" in the task distribution), so here
+        # we surface the error cleanly and let the caller decide.
         if isinstance(result, dict) and result.get("error"):
             logger = logging.getLogger("triage.ai")
-            logger.warning("AI unavailable, using deterministic fallback. details=%s", result.get("details"))
-            ai_failed_details = result.get("details", [])
-            result = compute_fallback_triage(symptoms, age=age, gender=gender)
+            logger.warning("AI unavailable. details=%s", result.get("details"))
+            return Response({
+                "error": "AI unavailable, staff review required",
+                "message": "Our AI triage service is temporarily unavailable. Your case will be queued for staff review.",
+                "details": result.get("details", []),
+                "error_types": result.get("error_types", []),
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
@@ -84,27 +92,16 @@ class TriageAIView(APIView):
         serializer = TriageAIResponseSerializer(data=filtered_result)
         if serializer.is_valid():
             response_data = dict(serializer.data)
-            response_data["source"] = result.get("source", "ai")
-            if ai_failed_details:
-                response_data["ai_details"] = ai_failed_details
+            response_data["source"] = "ai"
             if warning:
                 response_data["warning"] = warning
             return Response(response_data)
 
-        # Serializer failed -- AI returned malformed output. Run fallback as last resort.
         logger = logging.getLogger("triage.ai")
-        logger.warning("AI response validation failed, using fallback. errors=%s", serializer.errors)
-        fb = compute_fallback_triage(symptoms, age=age, gender=gender)
-        fb_filtered = {k: v for k, v in fb.items() if k in expected_fields}
-        fb_serializer = TriageAIResponseSerializer(data=fb_filtered)
-        if fb_serializer.is_valid():
-            response_data = dict(fb_serializer.data)
-            response_data["source"] = fb["source"]
-            response_data["ai_details"] = ["AI returned malformed response"]
-            return Response(response_data)
+        logger.warning("AI response validation failed. errors=%s", serializer.errors)
         return Response({
             "error": "AI response format error.",
-            "message": "Sorry, we could not interpret the AI's response. Your case will be flagged for staff review.",
+            "message": "AI response did not match expected format.",
             "details": serializer.errors,
             "raw_ai": result,
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -165,44 +162,45 @@ class TriagePDFExtractView(APIView):
                 "error": "PDF not relevant.",
                 "message": "The uploaded PDF does not contain relevant medical information for triage. Please upload a document related to patient symptoms or medical conditions."
             }, status=status.HTTP_400_BAD_REQUEST)
-        # Build prompt and call Gemini
-        prompt = build_pdf_triage_prompt(text)
+        # Build prompt and call Gemini -- carry demographics from the multipart form if present
+        pdf_age = normalize_age(request.data.get("age"))
+        pdf_gender = normalize_gender(request.data.get("gender"))
+        prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender)
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
         ]
-        ai_failed_details = None
         try:
             ai_response = call_gemini_api(prompt, user_description="PDF upload triage")
             result = json.loads(ai_response)
         except Exception as e:
-            logger.warning("Gemini AI error, using fallback: %s", str(e))
-            ai_failed_details = [str(e)]
-            result = compute_fallback_triage(text)
+            # AI call or JSON decode failed -- surface as 502. Rule-based
+            # fallback substitution is M6's responsibility (triage_service).
+            logger.warning("Gemini AI error on PDF: %s", str(e))
+            return Response({
+                "error": "AI service unavailable.",
+                "message": "We are unable to process your request at this time. Please try again later.",
+                "details": str(e),
+            }, status=status.HTTP_502_BAD_GATEWAY)
 
+        # AI returned a structured error envelope (all models failed, circuit open).
         if isinstance(result, dict) and result.get("error"):
-            logger.warning("AI unavailable for PDF, using fallback. details=%s", result.get("details"))
-            ai_failed_details = result.get("details", [])
-            result = compute_fallback_triage(text)
+            logger.warning("AI unavailable for PDF. details=%s", result.get("details"))
+            return Response({
+                "error": "AI unavailable, staff review required",
+                "message": "Our AI triage service is temporarily unavailable. Your case will be queued for staff review.",
+                "details": result.get("details", []),
+                "error_types": result.get("error_types", []),
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        result = normalize_ai_response(result)
         filtered_result = {k: v for k, v in result.items() if k in expected_fields}
         serializer = TriageAIResponseSerializer(data=filtered_result)
         if serializer.is_valid():
             response_data = dict(serializer.data)
-            response_data["source"] = result.get("source", "ai")
-            if ai_failed_details:
-                response_data["ai_details"] = ai_failed_details
+            response_data["source"] = "ai"
             return Response(response_data)
 
-        # Serializer failed -- AI returned malformed output. Run fallback as last resort.
-        logger.warning("AI response validation failed, using fallback. errors=%s", serializer.errors)
-        fb = compute_fallback_triage(text)
-        fb_filtered = {k: v for k, v in fb.items() if k in expected_fields}
-        fb_serializer = TriageAIResponseSerializer(data=fb_filtered)
-        if fb_serializer.is_valid():
-            response_data = dict(fb_serializer.data)
-            response_data["source"] = fb["source"]
-            response_data["ai_details"] = ["AI returned malformed response"]
-            return Response(response_data)
+        logger.warning("AI response validation failed. errors=%s", serializer.errors)
         return Response({
             "error": "AI response format error.",
             "message": "AI response did not match expected format.",
