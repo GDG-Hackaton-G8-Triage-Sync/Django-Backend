@@ -1,10 +1,12 @@
-import io
+
 import os
+os.environ["DATABASE_URL"] = "postgresql://neondb_owner:npg_T6SiVZDcgz2e@ep-square-firefly-abisf3bt-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+import io
 import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-import triagesync_backend.apps.triage.services.ai_service as ai_service
 
 @pytest.mark.django_db
 def test_pdf_extract_irrelevant_pdf():
@@ -44,7 +46,10 @@ def test_pdf_extract_success(monkeypatch):
     }
 
     import json
-    monkeypatch.setattr(ai_service, "call_gemini_api", lambda prompt, user_description=None: json.dumps(ai_json))
+    monkeypatch.setattr(
+        "triagesync_backend.apps.triage.views.call_gemini_api",
+        lambda prompt, user_description=None: json.dumps(ai_json),
+    )
     url = reverse("triage-pdf-extract")
     pdf_file = make_pdf_with_text("45-year-old, chest pain")
     resp = client.post(url, {"file": pdf_file}, format="multipart")

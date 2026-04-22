@@ -59,9 +59,12 @@ def test_ai_all_models_fail(monkeypatch):
         }
     )
     resp = client.post(reverse("triage-ai"), {"symptoms": "chest pain", "age": 45, "gender": "male"}, format="json")
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert resp.data["error"] == "AI unavailable."
-    assert "quota" in str(resp.data["details"]).lower()
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["source"] == "fallback_keyword"
+    assert resp.data["is_critical"] is True
+    assert resp.data["priority_level"] == 2
+    assert resp.data["category"] == "Cardiac"
+    assert "quota" in str(resp.data.get("ai_details", [])).lower()
 
 @pytest.mark.django_db
 def test_ai_model_not_found(monkeypatch):
@@ -79,9 +82,11 @@ def test_ai_model_not_found(monkeypatch):
         }
     )
     resp = client.post(reverse("triage-ai"), {"symptoms": "chest pain", "age": 45, "gender": "male"}, format="json")
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert resp.data["error"] == "AI unavailable."
-    assert "not found" in str(resp.data["details"]).lower()
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["source"] == "fallback_keyword"
+    assert resp.data["is_critical"] is True
+    assert resp.data["priority_level"] == 2
+    assert "not found" in str(resp.data.get("ai_details", [])).lower()
 
 @pytest.mark.django_db
 def test_ai_other_error(monkeypatch):
@@ -99,9 +104,11 @@ def test_ai_other_error(monkeypatch):
         }
     )
     resp = client.post(reverse("triage-ai"), {"symptoms": "chest pain", "age": 45, "gender": "male"}, format="json")
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert resp.data["error"] == "AI unavailable."
-    assert "network timeout" in str(resp.data["details"]).lower()
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["source"] == "fallback_keyword"
+    assert resp.data["is_critical"] is True
+    assert resp.data["priority_level"] == 2
+    assert "network timeout" in str(resp.data.get("ai_details", [])).lower()
 
 @pytest.mark.django_db
 def test_ai_missing_description():

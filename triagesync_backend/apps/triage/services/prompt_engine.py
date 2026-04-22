@@ -10,9 +10,10 @@ Patient info:
 - Symptoms: {symptoms.strip()}
 
 Triage rules:
-- Always consider age: infants (<1 year), children, and elderly (>65 years) are higher risk for most symptoms.
-- Always consider pregnancy: any pregnant woman with concerning symptoms is high risk.
-- Always consider disability or chronic illness: patients with disabilities, immunosuppression, or chronic conditions are higher risk.
+- Always consider age: neonates (<28 days), infants (<1 year), young children (<5 years), and elderly (>65 years) are higher risk for most symptoms.
+- Always consider pregnancy: any pregnant woman with concerning symptoms (vaginal bleeding, severe abdominal pain, reduced fetal movement, hypertension, headache with visual changes, seizures, or trauma) is high risk and must be treated as at least Level 2.
+- Always consider disability, chronic illness, or immunocompromise: patients with physical or cognitive disabilities, immunosuppression, organ transplant, active cancer treatment, dialysis, or significant chronic conditions (COPD, CHF, diabetes, sickle cell, severe asthma) are higher risk.
+- Always consider other special cases: recent surgery or hospital discharge (<30 days), anticoagulant use, mental health crisis or suicidal ideation, suspected abuse or assault, and unaccompanied minors — all elevate risk by at least one level.
 - Level 1: Immediate/life-threatening (e.g., cardiac arrest, severe bleeding, airway compromise).
 - Level 2: Emergent (e.g., chest pain, stroke symptoms, severe pain).
 - Level 3: Urgent (e.g., high fever, moderate pain, persistent vomiting).
@@ -24,6 +25,7 @@ Triage rules:
   - category (Cardiac | Respiratory | Trauma | Neurological | General)
   - is_critical (true or false)
   - explanation (list of key symptoms, e.g., ["chest pain", "sweating"])
+- is_critical must be set to true ONLY when the case is immediately life- or limb-threatening and requires intervention within minutes. Typical triggers: airway compromise, respiratory failure, hemodynamic instability, active severe bleeding, suspected stroke, STEMI/ACS signs, anaphylaxis, severe trauma, seizure in progress, DKA with altered mental status, obstetric emergency (e.g., eclampsia, severe antepartum hemorrhage), or any patient from a special-case group above (pregnancy, neonate, immunocompromised, disabled) presenting with red-flag symptoms. Otherwise is_critical must be false, even if the case is urgent.
 - If symptoms suggest a life-threatening condition, set priority_level = 1, is_critical = true, and urgency_score > 85.
 - Use short condition names (e.g., "Cardiac Event", "Asthma Attack").
 
@@ -93,9 +95,10 @@ def build_pdf_triage_prompt(extracted_text: str) -> str:
 You are a triage assistant for a medical app. You will be given text extracted from a medical PDF (e.g., discharge summary, referral, or report). Your job is to analyze the text and provide a triage summary in strict JSON format.
 
 Triage rules:
-- Always consider age: infants (<1 year), children, and elderly (>65 years) are higher risk for most symptoms.
-- Always consider pregnancy: any pregnant woman with concerning symptoms is high risk.
-- Always consider disability or chronic illness: patients with disabilities, immunosuppression, or chronic conditions are higher risk.
+- Always consider age: neonates (<28 days), infants (<1 year), young children (<5 years), and elderly (>65 years) are higher risk for most symptoms.
+- Always consider pregnancy: any pregnant woman with concerning symptoms (vaginal bleeding, severe abdominal pain, reduced fetal movement, hypertension, headache with visual changes, seizures, or trauma) is high risk and must be treated as at least Level 2.
+- Always consider disability, chronic illness, or immunocompromise: patients with physical or cognitive disabilities, immunosuppression, organ transplant, active cancer treatment, dialysis, or significant chronic conditions (COPD, CHF, diabetes, sickle cell, severe asthma) are higher risk.
+- Always consider other special cases: recent surgery or hospital discharge (<30 days), anticoagulant use, mental health crisis or suicidal ideation, suspected abuse or assault, and unaccompanied minors — all elevate risk by at least one level.
 - Level 1: Immediate/life-threatening (e.g., cardiac arrest, severe bleeding, airway compromise).
 - Level 2: Emergent (e.g., chest pain, stroke symptoms, severe pain).
 - Level 3: Urgent (e.g., high fever, moderate pain, persistent vomiting).
@@ -107,6 +110,7 @@ Triage rules:
   - category (Cardiac | Respiratory | Trauma | Neurological | General)
   - is_critical (true or false)
   - explanation (list of key symptoms, e.g., ["chest pain", "sweating"])
+- is_critical must be set to true ONLY when the case is immediately life- or limb-threatening and requires intervention within minutes. Typical triggers: airway compromise, respiratory failure, hemodynamic instability, active severe bleeding, suspected stroke, STEMI/ACS signs, anaphylaxis, severe trauma, seizure in progress, DKA with altered mental status, obstetric emergency (e.g., eclampsia, severe antepartum hemorrhage), or any patient from a special-case group above (pregnancy, neonate, immunocompromised, disabled) presenting with red-flag symptoms. Otherwise is_critical must be false, even if the case is urgent.
 - If symptoms suggest a life-threatening condition, set priority_level = 1, is_critical = true, and urgency_score > 85.
 - Use short condition names (e.g., "Cardiac Event", "Asthma Attack").
 
