@@ -1,4 +1,5 @@
 from .utils import generate_request_id
+from .payload_sanitizer import PayloadSanitizerMiddleware
 
 
 class RequestIDMiddleware:

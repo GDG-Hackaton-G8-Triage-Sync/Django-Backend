@@ -1,6 +1,6 @@
 import pytest
 from django.test import RequestFactory
-from triagesync_backend.core.payload_sanitizer import sanitize_payload, PayloadSanitizerMiddleware
+from triagesync_backend.apps.core.payload_sanitizer import sanitize_payload, PayloadSanitizerMiddleware
 
 def test_sanitize_payload_removes_pii():
     data = {
