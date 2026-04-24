@@ -1,112 +1,213 @@
-# TriageSync Backend
+# Django-Backend
+# TriageSync – Member 7 Data Layer (Queries)
 
-## 🚀 Deployed Backend
+## Overview
 
-Production: https://django-backend-4r5p.onrender.com/
+This module implements the **Data Access Layer** for the TriageSync system.
+It provides optimized database queries used by the API layer to manage triage sessions, queue ordering, and priority updates.
 
-Professional Django backend scaffold for a medical triage platform.
+This work corresponds to **Member 7 — Data Layer (Models & Queries)**.
 
-## Stack
-- Django
-- Django REST Framework
-- JWT authentication (SimpleJWT)
-- Django Channels (WebSocket support)
+The queries operate on models defined in:
 
-## Quick Start
-1. Create and activate virtual environment.
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Apply migrations:
-   python manage.py migrate
-4. Run server:
-   python manage.py runserver
+* `authentication/models.py`
+* `patients/models.py`
+* `triage/models.py`
 
-## Project Layout
-- config: central Django configuration (settings, URLs, ASGI/WSGI)
-- apps.authentication: user and auth flows
-- apps.patients: patient submission flows
-- apps.triage: triage analysis and validation services
-- apps.realtime: websocket consumers and event broadcasting
-- apps.dashboard: dashboard and patient listing APIs
-- apps.core: shared constants, exceptions, middleware, and response helpers
-
-# 🏗️ 🧠 FINAL DJANGO BACKEND STRUCTURE (UPDATED)
-
-```text
-triagesync_backend/
-├── config/                          # PROJECT CONFIGURATION
-│   ├── __init__.py
-│   ├── settings.py                  # JWT, DRF, Channels, DB config
-│   ├── urls.py                     # Root routes
-│   ├── asgi.py                     # WebSocket entry (Channels)
-│   ├── wsgi.py
-│
-├── apps/                            # ALL APPLICATION MODULES
-│
-│ ├── authentication/               🔐 AUTH MODULE (Member 1 + 2)
-│ │   ├── models.py                 # Custom User model (role-based)
-│ │   ├── admin.py
-│ │   ├── apps.py
-│ │   ├── urls.py
-│ │   ├── views.py                  # login endpoint
-│ │   ├── serializers.py            # login/register validation
-│ │   ├── permissions.py            # role-based access
-│ │   ├── services/
-│ │   │   ├── auth_service.py       # JWT logic, token handling
-│ │   │   └── user_service.py
-│ │   └── tests.py
-│
-│ ├── patients/                     🧑 PATIENT MODULE (Member 3 + 4)
-│ │   ├── models.py                 # Patient submission model
-│ │   ├── urls.py
-│ │   ├── views.py                  # /api/triage/
-│ │   ├── serializers.py            # input validation (500 chars)
-│ │   ├── services/
-│ │   │   ├── patient_service.py    # submit symptom logic
-│ │   │   └── history_service.py
-│ │   └── tests.py
-│
-│ ├── triage/                       🧠 AI + DECISION ENGINE
-│ │   ├── models.py                 # TriageResult model
-│ │   ├── urls.py
-│ │   ├── views.py                  # connects AI → response
-│ │   ├── serializers.py
-│ │   ├── services/                 # CORE INTELLIGENCE LAYER
-│ │   │   ├── ai_service.py         # OpenAI/Gemini API call (Member 5)
-│ │   │   ├── triage_service.py     # priority + urgency logic (Member 6)
-│ │   │   ├── validation_service.py # JSON validation + fallback
-│ │   │   └── prompt_engine.py      # AI prompt templates
-│ │   └── tests.py
-│
-│ ├── realtime/                     ⚡ REAL-TIME SYSTEM (Member 8)
-│ │   ├── consumers.py              # WebSocket consumer (Channels)
-│ │   ├── routing.py                # WS routing
-│ │   ├── urls.py
-│ │   ├── services/
-│ │   │   ├── broadcast_service.py  # send updates to dashboard
-│ │   │   └── event_service.py      # event formatting
-│ │   └── tests.py
-│
-│ ├── dashboard/                    📊 DASHBOARD DATA API (Member 4)
-│ │   ├── views.py                  # GET /api/patients/
-│ │   ├── urls.py
-│ │   ├── serializers.py
-│ │   ├── services/
-│ │   │   ├── dashboard_service.py  # sorting + filtering logic
-│ │   └── tests.py
-│
-│ ├── core/                         🧰 SHARED UTILITIES
-│ │   ├── utils.py
-│ │   ├── constants.py
-│ │   ├── exceptions.py
-│ │   ├── response.py               # standard API response format (use this, do NOT use responses.py)
-│ │   └── middleware.py
 ---
-## ⚠️ Naming Best Practice
 
-> Only use <b>core/response.py</b> for response utilities. <br>
-> <b>Do NOT use core/responses.py</b> to avoid confusion and duplication.
+## Responsibilities
+
+This module handles:
+
+* Fetching staff queue
+* Sorting patients by urgency
+* Getting patient session details
+* Creating triage sessions
+* Overriding priority
+* Reordering queue positions
+
+All logic is implemented inside:
+
+```
+triage/services.py
+```
+
+---
+
+## Project Structure
+
+```
+Triagesync/
 │
-├── requirements.txt
+├── authentication/
+│   └── models.py
+│
+├── patients/
+│   └── models.py
+│
+├── triage/
+│   ├── models.py
+│   └── services.py   ← Data Layer (Member 7)
+│
 ├── manage.py
-└── README.md
+└── db.sqlite3
+```
+
+---
+
+## Functions Implemented
+
+### 1. Get Staff Queue
+
+Returns all pending triage sessions sorted by urgency score.
+
+```python
+get_staff_queue()
+```
+
+Used by:
+
+* Staff dashboard
+* Queue display
+
+---
+
+### 2. Get Current Session
+
+Returns the latest session for a patient.
+
+```python
+get_current_session(patient)
+```
+
+Used by:
+
+* Patient status screen
+
+---
+
+### 3. Get Patient Detail
+
+Fetches a single triage session by session ID.
+
+```python
+get_patient_detail(session_id)
+```
+
+Used by:
+
+* Staff patient detail view
+
+---
+
+### 4. Override Priority
+
+Allows staff to manually override priority level.
+
+```python
+override_priority(session_id, new_priority)
+```
+
+Automatically reorders queue after update.
+
+---
+
+### 5. Reorder Queue
+
+Recalculates queue positions based on urgency score.
+
+```python
+reorder_queue()
+```
+
+Highest urgency → position 1
+
+---
+
+### 6. Create Triage Session
+
+Creates a new triage session for a patient.
+
+```python
+create_triage_session(patient, symptoms)
+```
+
+Status defaults to:
+
+```
+pending
+```
+
+---
+
+## Queue Ordering Logic
+
+Queue is sorted using:
+
+```
+urgency_score DESC
+```
+
+Example:
+
+| Patient          | Urgency | Position |
+| ---------------- | ------- | -------- |
+| Chest Pain       | 95      | 1        |
+| Shortness Breath | 80      | 2        |
+| Fever            | 40      | 3        |
+
+---
+
+## Dependencies
+
+* Django
+* Django ORM
+* SQLite / PostgreSQL
+
+---
+
+## Testing
+
+Run Django shell:
+
+```
+python manage.py shell
+```
+
+Import services:
+
+```
+from triage.services import *
+```
+
+Test queue:
+
+```
+get_staff_queue()
+```
+
+---
+
+## Integration
+
+This module is used by:
+
+* API views
+* Staff dashboard endpoints
+* Patient submission endpoints
+
+Example usage:
+
+```
+sessions = get_staff_queue()
+```
+
+---
+
+## Author
+
+Member 7 — Data Layer
+Queries & Database Access Logic
+
+Nardos
