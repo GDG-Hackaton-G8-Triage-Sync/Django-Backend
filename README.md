@@ -1,213 +1,160 @@
-# Django-Backend
-# TriageSync – Member-7 Data Models
+# TriageSync Backend
 
-## Overview
-
-This module implements the **Data Models** for the TriageSync system.  
-It defines the core database entities used by the API layer to manage authentication, patient records, and triage sessions.
-
-This work corresponds to **Member 7-Data Models**.
-
-The models are defined in:
-
-* `authentication/models.py`
-* `patients/models.py`
-* `triage/models.py`
+A Django REST API backend for a real-time medical triage system built for the GDG Hackathon. Patients submit symptoms, an AI engine prioritizes them, and medical staff see a live-updating queue via WebSocket.
 
 ---
 
-## Responsibilities
+## Tech Stack
 
-This module handles:
-
-* Fetching staff queue
-* Sorting patients by urgency
-* Getting patient session details
-* Creating triage sessions
-* Overriding priority
-* Reordering queue positions
-
-All logic is implemented inside:
-
-```
-triage/services.py
-```
+- Python / Django 5.1
+- Django REST Framework + SimpleJWT
+- Django Channels (WebSocket via ASGI)
+- PostgreSQL
+- Redis (channel layer for production)
+- Daphne / Uvicorn (ASGI server)
 
 ---
 
 ## Project Structure
 
 ```
-Triagesync/
-│
-├── authentication/
-│   └── models.py
-│
-├── patients/
-│   └── models.py
-│
-├── triage/
-│   ├── models.py
-│   └── services.py   ← Data Layer (Member 7)
-│
-├── manage.py
-└── db.sqlite3
+triagesync_backend/
+├── apps/
+│   ├── authentication/   # JWT auth, user roles (patient/nurse/doctor/admin)
+│   ├── core/             # Shared utils, middleware, response helpers
+│   ├── patients/         # Patient symptom submission
+│   ├── triage/           # AI triage logic + priority engine
+│   ├── dashboard/        # Staff/admin dashboard APIs
+│   └── realtime/         # WebSocket consumer + broadcast system
+└── config/               # Django settings, URLs, ASGI/WSGI
 ```
 
 ---
 
-## Functions Implemented
+## Setup
 
-### 1. Get Staff Queue
+```bash
+# 1. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-Returns all pending triage sessions sorted by urgency score.
+# 2. Install dependencies
+pip install -r requirements.txt
 
-```python
-get_staff_queue()
-```
+# 3. Create .env file
+cp .env.example .env
+# Fill in DATABASE_URL, DJANGO_SECRET_KEY, REDIS_URL
 
-Used by:
+# 4. Run migrations
+python manage.py migrate
 
-* Staff dashboard
-* Queue display
-
----
-
-### 2. Get Current Session
-
-Returns the latest session for a patient.
-
-```python
-get_current_session(patient)
-```
-
-Used by:
-
-* Patient status screen
-
----
-
-### 3. Get Patient Detail
-
-Fetches a single triage session by session ID.
-
-```python
-get_patient_detail(session_id)
-```
-
-Used by:
-
-* Staff patient detail view
-
----
-
-### 4. Override Priority
-
-Allows staff to manually override priority level.
-
-```python
-override_priority(session_id, new_priority)
-```
-
-Automatically reorders queue after update.
-
----
-
-### 5. Reorder Queue
-
-Recalculates queue positions based on urgency score.
-
-```python
-reorder_queue()
-```
-
-Highest urgency → position 1
-
----
-
-### 6. Create Triage Session
-
-Creates a new triage session for a patient.
-
-```python
-create_triage_session(patient, description)
-```
-
-Status defaults to:
-
-```
-waiting
+# 5. Start server (ASGI required for WebSocket)
+daphne config.asgi:application
 ```
 
 ---
 
-## Queue Ordering Logic
+## Environment Variables
 
-Queue is sorted using:
-
-```
-urgency_score DESC
-```
-
-Example:
-
-| Patient          | Urgency | Position |
-| ---------------- | ------- | -------- |
-| Chest Pain       | 95      | 1        |
-| Shortness Breath | 80      | 2        |
-| Fever            | 40      | 3        |
+| Variable | Required | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | ✅ | Django secret key |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `REDIS_URL` | ⚠️ | Redis URL — falls back to in-memory if not set |
+| `DJANGO_DEBUG` | optional | `true` for dev, `false` for prod |
+| `DJANGO_ALLOWED_HOSTS` | optional | Comma-separated allowed hosts |
+| `CORS_ALLOW_ALL_ORIGINS` | optional | `true` to allow all CORS origins |
 
 ---
 
-## Dependencies
+## API Endpoints
 
-* Django
-* Django ORM
-* SQLite / PostgreSQL
-
----
-
-## Testing
-
-Run Django shell:
-
-```
-python manage.py shell
-```
-
-Import services:
-
-```
-from triage.services import *
-```
-
-Test queue:
-
-```
-get_staff_queue()
-```
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/v1/auth/register/` | Public | Register new user |
+| POST | `/api/v1/auth/login/` | Public | Login, get JWT tokens |
+| POST | `/api/v1/patients/submit/` | Patient | Submit symptoms |
+| GET | `/api/v1/dashboard/patients/` | Staff/Admin | Get patient queue |
+| WS | `ws://.../ws/triage/events/` | Staff/Admin | Real-time event stream |
 
 ---
 
-## Integration
+## Real-Time WebSocket (Member 8 — Implemented ✅)
 
-This module is used by:
-
-* API views
-* Staff dashboard endpoints
-* Patient submission endpoints
-
-Example usage:
-
+### Connection
 ```
-sessions = get_staff_queue()
+ws://your-domain.com/ws/triage/events/
+```
+
+### Event Types Broadcast to Clients
+
+**patient_created** — fires when a new patient submission is triaged
+```json
+{
+  "type": "patient_created",
+  "data": { "id": 101, "priority": 2, "urgency_score": 75 },
+  "timestamp": "2026-04-24T10:30:00Z"
+}
+```
+
+**priority_update** — fires when a patient's priority is re-evaluated
+```json
+{
+  "type": "priority_update",
+  "data": { "id": 101, "priority": 1, "urgency_score": 92 },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+**critical_alert** — auto-fires when priority == 1 (score >= 80)
+```json
+{
+  "type": "critical_alert",
+  "data": { "id": 101, "priority": 1, "message": "Critical patient detected!" },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+**status_changed** — fires when staff updates patient status
+```json
+{
+  "type": "status_changed",
+  "data": { "id": 101, "status": "in_progress" },
+  "timestamp": "2026-04-24T10:32:00Z"
+}
+```
+
+### How to Integrate (Flutter)
+1. Open WebSocket connection to `ws://your-domain/ws/triage/events/`
+2. Listen for incoming JSON messages
+3. Parse `type` field to handle each event
+4. No need to send anything — this is a server-push only channel
+
+### Testing with Mock Server (no Django needed)
+```bash
+pip install websockets
+python mock_ws_server.py
+# Connect Postman/Flutter to ws://localhost:8765
+# Receives all event types every 3 seconds
 ```
 
 ---
 
-## Author
+## Running Tests
 
-Member 7 — Data Layer
-Queries & Database Access Logic
+```bash
+# From triagesync_backend/
+pytest apps/realtime/tests.py -v
+```
 
-Nardos
+---
+
+## Branches
+
+| Branch | Description |
+|---|---|
+| `main` | Stable base |
+| `dev` | Integration branch — all members merge here |
+| `realtimefeater` | Member 8 — WebSocket + broadcast system |
+| `member6-triage-logic` | Member 6 — Triage priority engine |
+| `feature/AI_service` | Member 5 — AI service layer |
