@@ -1,4 +1,5 @@
-# TriageSync Backend
+# Django-Backend
+# TriageSync – Member 7 Data Layer (Queries)
 
 A Django REST API backend for a real-time medical triage system built for the GDG Hackathon. Patients submit symptoms, an AI engine prioritizes them, and medical staff see a live-updating queue via WebSocket.
 
