@@ -38,12 +38,12 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
-    "apps.authentication",
-    "apps.patients",
-    "apps.triage",
-    "apps.realtime",
-    "apps.dashboard",
-    "apps.core",
+    "triagesync_backend.apps.authentication",
+    "triagesync_backend.apps.patients",
+    "triagesync_backend.apps.triage",
+    "triagesync_backend.apps.realtime",
+    "triagesync_backend.apps.dashboard",
+    "triagesync_backend.apps.core",
 ]
 
 MIDDLEWARE = [
@@ -55,10 +55,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "apps.core.middleware.RequestIDMiddleware",
+    "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "triagesync_backend.config.urls"
 
 TEMPLATES = [
     {
@@ -75,8 +75,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
+WSGI_APPLICATION = "triagesync_backend.config.wsgi.application"
+ASGI_APPLICATION = "triagesync_backend.config.asgi.application"
 
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
