@@ -130,13 +130,13 @@ Highest urgency → position 1
 Creates a new triage session for a patient.
 
 ```python
-create_triage_session(patient, symptoms)
+create_triage_session(patient, description)
 ```
 
 Status defaults to:
 
 ```
-pending
+waiting
 ```
 
 ---
