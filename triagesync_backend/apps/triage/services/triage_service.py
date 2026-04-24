@@ -1,5 +1,5 @@
 from .ai_service import infer_priority
-from .validation_service import validate_symptoms
+from .validation_service import validate_symptoms , datetime
 
 
 # -------------------------
@@ -65,8 +65,8 @@ def process_triage(ai_output, current_status="PENDING"):
 def evaluate_triage(symptoms: str, current_status="PENDING"):
     clean_symptoms = validate_symptoms(symptoms)
 
-    # emergency override FIRST
     emergency = check_emergency_override(clean_symptoms)
+    source = "AI_SYSTEM"
 
     if emergency["override"]:
         result = {
@@ -77,31 +77,28 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
         }
 
         event = trigger_event(result)
+        source = "EMERGENCY_OVERRIDE"
 
-        return {
-            "triage_result": result,
-            "event": event,
-            "source": "EMERGENCY_OVERRIDE"
+    else:
+        score = safe_infer_priority(clean_symptoms)
+
+        ai_output = {
+            "urgency_score": score,
+            "condition": "AI Generated"
         }
 
-    # normal flow
-    score = safe_infer_priority(clean_symptoms)
-
-    ai_output = {
-        "urgency_score": score,
-        "condition": "AI Generated"
-    }
-
-    result = process_triage(ai_output, current_status)
-
-    event = trigger_event(result)
+        result = process_triage(ai_output, current_status)
+        event = trigger_event(result)
 
     return {
-        "triage_result": result,
-        "event": event,
-        "source": "AI_SYSTEM"
+        "success": True,
+        "data": {
+            "triage_result": result,
+            "event": event,
+            "source": source,
+            "module": "member6_triage_service"
+        }
     }
-
 def trigger_event(result):
     status = result.get("status")
     score = result.get("urgency_score")
