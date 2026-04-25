@@ -26,7 +26,7 @@ from PyPDF2 import PdfReader
 from .services.triage_service import evaluate_triage
 from .serializers import TriageInputSerializer
 from apps.authentication.permissions import IsDoctor
-from apps.core.response import success_response
+from apps.core.response import success_response, error_response
 
 MAX_INPUT_LENGTH = 500
 
