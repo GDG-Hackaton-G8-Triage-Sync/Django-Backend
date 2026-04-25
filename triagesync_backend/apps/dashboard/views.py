@@ -7,7 +7,7 @@ from .services.dashboard_service import get_patient_queue
 
 class StaffPatientQueueView(APIView):
     """
-    GET /api/dashboard/staff/patients/
+    GET /api/v1/staff/patients/
     """
 
     def get(self, request):
@@ -24,7 +24,7 @@ from .services.dashboard_service import update_patient_status
 
 class UpdatePatientStatusView(APIView):
     """
-    PATCH /api/dashboard/staff/patient/{id}/status/
+    PATCH /api/v1/staff/patient/{id}/status/
     """
 
     def patch(self, request, id):
@@ -42,7 +42,7 @@ from .services.dashboard_service import get_admin_overview
 
 class AdminOverviewView(APIView):
     """
-    GET /api/dashboard/admin/overview/
+    GET /api/v1/admin/overview/
     """
 
     def get(self, request):
@@ -54,7 +54,7 @@ from .services.dashboard_service import get_admin_analytics
 
 class AdminAnalyticsView(APIView):
     """
-    GET /api/dashboard/admin/analytics/
+    GET /api/v1/admin/analytics/
     """
 
     def get(self, request):
