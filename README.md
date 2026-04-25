@@ -1,14 +1,14 @@
 # Django-Backend
-# TriageSync – Member 7 Data Layer (Queries)
+# TriageSync – Member-7 Data Models
 
 ## Overview
 
-This module implements the **Data Access Layer** for the TriageSync system.
-It provides optimized database queries used by the API layer to manage triage sessions, queue ordering, and priority updates.
+This module implements the **Data Models** for the TriageSync system.  
+It defines the core database entities used by the API layer to manage authentication, patient records, and triage sessions.
 
-This work corresponds to **Member 7 — Data Layer (Models & Queries)**.
+This work corresponds to **Member 7-Data Models**.
 
-The queries operate on models defined in:
+The models are defined in:
 
 * `authentication/models.py`
 * `patients/models.py`
