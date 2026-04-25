@@ -3,6 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from .serializers import DashboardPatientSerializer
 from .services.dashboard_service import get_patient_queue
+from apps.patients.models import PatientSubmission
+from .services.dashboard_service import update_priority, verify_patient
 
 class AdminOverviewView(APIView):
     def get(self, request):
@@ -120,3 +122,58 @@ class AdminAnalyticsView(APIView):
     def get(self, request):
         data = get_admin_analytics()
         return Response(data)
+    
+class UpdatePatientPriorityView(APIView):
+
+    def patch(self, request, id):
+        priority = request.data.get("priority")
+
+        if priority is None:
+            return Response(
+                {"code": "INVALID_INPUT", "message": "Priority is required"},
+                status=400
+            )
+
+        try:
+            patient = PatientSubmission.objects.get(id=id)
+
+            # 👉 call service instead of writing logic here
+            update_priority(patient, priority)
+
+            return Response({"message": "Priority updated successfully"})
+
+        except PatientSubmission.DoesNotExist:
+            return Response(
+                {"code": "NOT_FOUND", "message": "Patient not found"},
+                status=404
+            )
+        
+
+from django.utils import timezone
+
+
+class VerifyPatientView(APIView):
+
+    def patch(self, request, id):
+        try:
+            patient = PatientSubmission.objects.get(id=id)
+
+            # 👉 call service
+            result = verify_patient(patient, request.user)
+
+            if result is None:
+                return Response(
+                    {
+                        "code": "ALREADY_VERIFIED",
+                        "message": "Patient already verified"
+                    },
+                    status=400
+                )
+
+            return Response({"message": "Patient verified successfully"})
+
+        except PatientSubmission.DoesNotExist:
+            return Response(
+                {"code": "NOT_FOUND", "message": "Patient not found"},
+                status=404
+            )
