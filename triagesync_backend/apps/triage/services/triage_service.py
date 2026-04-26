@@ -19,21 +19,51 @@ from .validation_service import get_fallback_ai_output, validate_ai_output, vali
 from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
 from apps.realtime.services.broadcast_service import broadcast_critical_alert
 from apps.realtime.services.broadcast_service import broadcast_priority_update
+
+# -------------------------
+# Emergency keyword override
+# -------------------------
+EMERGENCY_KEYWORDS = [
+    "chest pain",
+    "no breathing",
+    "not breathing",
+    "unconscious",
+    "unresponsive",
+    "severe bleeding",
+    "heart attack",
+    "stroke",
+    "seizure",
+    "cardiac arrest",
+]
+
+
+def check_emergency_override(symptoms: str) -> dict:
+    """
+    Check if symptoms contain any life-threatening keywords.
+    If so, bypass AI and return an immediate CRITICAL result.
+    """
+    text = symptoms.lower()
+    for keyword in EMERGENCY_KEYWORDS:
+        if keyword in text:
+            return {
+                "override": True,
+                "matched_keyword": keyword,
+                "urgency_score": 100,
+                "condition": "Emergency Override",
+            }
+    return {"override": False, "condition": "Unknown"}
+
+
 # -------------------------
 # Priority calculation
 # -------------------------
 def calculate_priority(urgency_score: int) -> int:
     """
     Map urgency score (0-100) to priority level (1-5).
-    Thresholds are read from settings.PRIORITY_THRESHOLDS so they
+    Thresholds are read from triage_config.PRIORITY_THRESHOLDS so they
     can be tuned without code changes.
     """
-    thresholds = getattr(settings, "PRIORITY_THRESHOLDS", {
-        "critical": 80,
-        "high": 60,
-        "medium": 40,
-        "low": 20,
-    })
+    thresholds = PRIORITY_THRESHOLDS
 
     if urgency_score >= thresholds["critical"]:
         return 1
@@ -121,7 +151,8 @@ from .validation_service import validate_symptoms
 
 
 def process_triage(ai_output, current_status="PENDING"):
-    score = ai_output.get("urgency_score", 0)
+    score = ai_output.get("urgency_score", 50)
+    thresholds = PRIORITY_THRESHOLDS
 
 def evaluate_triage(symptoms: str):
     validate_symptoms(symptoms)
@@ -320,42 +351,64 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
     # 1. Validate input
     clean_symptoms = validate_symptoms(symptoms)
 
-    # 2. AI layer (Member 5)
-    ai_score = infer_priority(clean_symptoms)
+    # 2. Check for emergency override
+    override = check_emergency_override(clean_symptoms)
+    if override["override"]:
+        urgency_score = override["urgency_score"]
+        condition = override["condition"]
+        source = "EMERGENCY_OVERRIDE"
+    else:
+        # 3. AI layer (Member 5)
+        ai_output = infer_priority(clean_symptoms)
+        
+        # Ensure ai_output is a dictionary with the expected keys
+        if isinstance(ai_output, dict):
+            urgency_score = ai_output.get("urgency_score", 50)
+            condition = ai_output.get("condition", "Unknown")
+        else:
+            urgency_score = 50
+            condition = "Unknown"
+        source = "AI_SYSTEM"
 
-    # 3. Normalize AI output (BRIDGE STEP - YOUR ROLE)
+    # 4. Normalize AI output (BRIDGE STEP - YOUR ROLE)
     ai_payload = {
-        "ai_score": ai_score,
-        "urgency_score": ai_score * 20,
-        "source": "AI_SERVICE"
+        "urgency_score": urgency_score,
+        "source": source
     }
 
-    # 4. Apply business rules (Member 6 logic)
+    # 5. Apply business rules (Member 6 logic)
     triage_result = process_triage(ai_payload, current_status)
+    
+    # Trigger real-time events
+    trigger_priority_update(
+        triage_result["priority"],
+        triage_result["urgency_score"],
+        condition
+    )
+    if triage_result["is_critical"]:
+        trigger_critical_alert(triage_result["urgency_score"], condition)
 
-    # 5. Build SYSTEM RESPONSE (THIS IS YOUR KEY ROLE)
+    # 6. Build SYSTEM RESPONSE (THIS IS YOUR KEY ROLE)
     response = {
-        "triage_result": triage_result,
-
-        # 👇 for staff dashboard
-        "staff_view": {
-            "priority": triage_result["priority"],
-            "status": triage_result["status"],
-            "is_critical": triage_result["is_critical"]
-        },
-
-        # 👇 for admin dashboard
-        "admin_view": {
-            "ai_score": ai_score,
-            "urgency_score": ai_payload["urgency_score"],
-            "decision_source": "AI + RULE_ENGINE"
-        },
-
-        # 👇 for system tracking
-        "system_meta": {
-            "module": "member6_bridge",
-            "status_flow": current_status,
-            "source": "AI -> BRIDGE -> RULES"
+        "success": True,
+        "data": {
+            "source": source,
+            "module": "member6_triage_service",
+            "triage_result": triage_result,
+            "staff_view": {
+                "priority": triage_result["priority"],
+                "status": triage_result["status"],
+                "is_critical": triage_result["is_critical"]
+            },
+            "admin_view": {
+                "urgency_score": urgency_score,
+                "decision_source": "AI + RULE_ENGINE"
+            },
+            "system_meta": {
+                "status_flow": current_status,
+                "source": "AI -> BRIDGE -> RULES"
+            },
+            "event": build_event(triage_result["priority"], triage_result["urgency_score"])
         }
     }
 
