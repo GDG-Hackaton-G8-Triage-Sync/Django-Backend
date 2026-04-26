@@ -52,7 +52,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "triagesync_backend.apps.core.middleware.PayloadSanitizerMiddleware",
+    "triagesync_backend.apps.triage.middleware.PayloadSanitizerMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -61,7 +61,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
 ROOT_URLCONF = "triagesync_backend.config.urls"

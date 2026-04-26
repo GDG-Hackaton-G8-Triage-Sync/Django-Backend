@@ -1,7 +1,4 @@
 from .utils import generate_request_id
-from .payload_sanitizer import PayloadSanitizerMiddleware
-
-
 class RequestIDMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
