@@ -1,37 +1,116 @@
-from .ai_service import get_triage_recommendation
-from .validation_service import validate_symptoms
 
+"""
+Triage Service — Member 6 (Triage Logic & Business Rules)
+
+Responsibilities:
+- Validate symptom input
+- Run emergency keyword override check
+- Call AI service and validate its output (with fallback)
+- Calculate priority (1-5) using configurable thresholds
+- Trigger critical_alert event for priority == 1
+- Emit priority_update real-time event
+- Return structured triage result
+"""
 from django.conf import settings
 
 from .ai_service import infer_priority
+from .ai_service import get_triage_recommendation
 from .validation_service import get_fallback_ai_output, validate_ai_output, validate_symptoms
 from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
 from apps.realtime.services.broadcast_service import broadcast_critical_alert
 from apps.realtime.services.broadcast_service import broadcast_priority_update
 # -------------------------
-# Fallback AI safety
+# Priority calculation
 # -------------------------
-def safe_infer_priority(symptoms):
+def calculate_priority(urgency_score: int) -> int:
+    """
+    Map urgency score (0-100) to priority level (1-5).
+    Thresholds are read from settings.PRIORITY_THRESHOLDS so they
+    can be tuned without code changes.
+    """
+    thresholds = getattr(settings, "PRIORITY_THRESHOLDS", {
+        "critical": 80,
+        "high": 60,
+        "medium": 40,
+        "low": 20,
+    })
+
+    if urgency_score >= thresholds["critical"]:
+        return 1
+    if urgency_score >= thresholds["high"]:
+        return 2
+    if urgency_score >= thresholds["medium"]:
+        return 3
+    if urgency_score >= thresholds["low"]:
+        return 4
+    return 5
+
+
+# -------------------------
+# AI call with fallback
+# -------------------------
+def safe_infer_priority(symptoms: str) -> dict:
+    """
+    Call AI service and validate its output.
+    Falls back to default values if AI fails or returns invalid data.
+    """
     try:
-        return infer_priority(symptoms)
+        ai_output = infer_priority(symptoms)
+        if validate_ai_output(ai_output):
+            return ai_output
+        # AI returned something but it's malformed — use fallback
+        return get_fallback_ai_output()
     except Exception:
-        return 40
+        return get_fallback_ai_output()
 
 
 # -------------------------
-# Status lifecycle logic
+# Real-time event helpers
 # -------------------------
-def update_status(current_status, score):
-    if current_status == "PENDING":
-        return "TRIAGED"
+def trigger_critical_alert(urgency_score: int, condition: str) -> None:
+    """Broadcast a critical_alert WebSocket event (priority == 1)."""
+    try:
+        broadcast_critical_alert({
+            "urgency_score": urgency_score,
+            "condition": condition,
+            "message": "Immediate medical attention required",
+        })
+    except Exception:
+        # Never let broadcast failure block the triage response
+        pass
 
-    if score >= 80:
-        return "ESCALATED"
 
-    if score < 40:
-        return "STABLE"
+def trigger_priority_update(priority: int, urgency_score: int, condition: str) -> None:
+    """Broadcast a priority_update WebSocket event whenever priority is set."""
+    try:
+        broadcast_priority_update({
+            "priority": priority,
+            "urgency_score": urgency_score,
+            "condition": condition,
+        })
+    except Exception:
+        pass
 
-    return current_status
+
+def build_event(priority: int, urgency_score: int) -> dict:
+    """Build the inline event summary returned in the API response."""
+    if priority == 1:
+        return {
+            "event_type": "critical_alert",
+            "level": "HIGH",
+            "message": "Immediate medical attention required",
+        }
+    if priority == 2:
+        return {
+            "event_type": "urgent_alert",
+            "level": "MEDIUM",
+            "message": "Patient needs quick review",
+        }
+    return {
+        "event_type": "log_only",
+        "level": "LOW",
+        "message": "No immediate action required",
+    }
 
 
 # -------------------------
@@ -236,96 +315,6 @@ def process_triage(ai_output, current_status="PENDING"):
     }
 # -------------------------
 # Entry point
-# -------------------------
-def evaluate_triage(symptoms: str, current_status="PENDING"):
-    # 1. Validate input
-    clean_symptoms = validate_symptoms(symptoms)
-
-    # 2. Check for emergency override
-    override = check_emergency_override(clean_symptoms)
-    if override["override"]:
-        urgency_score = override["urgency_score"]
-        condition = override["condition"]
-        source = "EMERGENCY_OVERRIDE"
-    else:
-        # 3. AI layer (Member 5)
-        ai_output = infer_priority(clean_symptoms)
-        
-        # Ensure ai_output is a dictionary with the expected keys
-        if isinstance(ai_output, dict):
-            urgency_score = ai_output.get("urgency_score", 50)
-            condition = ai_output.get("condition", "Unknown")
-        else:
-            urgency_score = 50
-            condition = "Unknown"
-        source = "AI_SYSTEM"
-
-    # 4. Normalize AI output (BRIDGE STEP - YOUR ROLE)
-    ai_payload = {
-        "urgency_score": urgency_score,
-        "source": source,
-        "base_status": current_status,
-        "is_critical": urgency_score >= 80
-    }
-
-    # 5. Apply business rules (Member 6 logic)
-    triage_result = process_triage(ai_payload, current_status)
-    
-    # Trigger real-time events
-    trigger_priority_update(
-        triage_result["priority"],
-        triage_result["urgency_score"],
-        condition
-    )
-    if triage_result["is_critical"]:
-        trigger_critical_alert(triage_result["urgency_score"], condition)
-
-    # 6. Build SYSTEM RESPONSE (THIS IS YOUR KEY ROLE)
-    response = {
-        "success": True,
-        "data": {
-            "source": source,
-            "module": "member6_triage_service",
-            "triage_result": triage_result,
-            "staff_view": {
-                "priority": triage_result["priority"],
-                "status": triage_result["status"],
-                "is_critical": triage_result["is_critical"]
-            },
-            "admin_view": {
-                "urgency_score": urgency_score,
-                "decision_source": "AI + RULE_ENGINE"
-            },
-            "system_meta": {
-                "status_flow": current_status,
-                "source": "AI -> BRIDGE -> RULES"
-            },
-            "event": build_event(triage_result["priority"], triage_result["urgency_score"])
-        }
-    }
-
-    return response
-def trigger_event(result):
-    status = result.get("status")
-    score = result.get("urgency_score")
-
-    if status == "CRITICAL" or score >= 80:
-        return {
-            "event_type": "EMERGENCY_ALERT",
-            "level": "HIGH",
-            "message": "Immediate medical attention required"
-        }
-
-    if status == "URGENT":
-        return {
-            "event_type": "URGENT_ALERT",
-            "level": "MEDIUM",
-            "message": "Patient needs quick review"
-        }
-
- 
-# -------------------------
-# Entry function (ONLY ONE)
 # -------------------------
 def evaluate_triage(symptoms: str, current_status="PENDING"):
     # 1. Validate input

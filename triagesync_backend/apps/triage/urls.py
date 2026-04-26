@@ -6,3 +6,8 @@ urlpatterns = [
     path('evaluate/', TriageEvaluateView.as_view(), name='triage-evaluate'),
     path('pdf-extract/', TriagePDFExtractView.as_view(), name='triage-pdf-extract'),
 ]
+from .views import TriageEvaluateView
+
+urlpatterns = [
+    path("triage/", TriageEvaluateView.as_view()),
+]
