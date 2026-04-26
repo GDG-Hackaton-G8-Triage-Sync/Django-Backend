@@ -75,3 +75,21 @@ Example inputs:
     "module": "member6_triage_service"
   }
 }
+
+## 🔗 AI Bridge Layer 
+
+This module acts as a **bridge between AI service and system layers**.
+
+### Responsibilities:
+- Receives AI-generated urgency score
+- Converts AI output into system-readable format
+- Applies business triage rules
+- Formats output for:
+  - 👩‍⚕️ Staff dashboard
+  - 🧑‍💼 Admin dashboard
+  - 📦 Database storage
+  - ⚡ Event system
+
+### Architecture Flow:
+
+AI Service → AI Bridge (Member 6) → Business Rules → System Output
