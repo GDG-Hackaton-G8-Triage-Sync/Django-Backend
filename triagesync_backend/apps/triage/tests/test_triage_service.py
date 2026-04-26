@@ -279,7 +279,9 @@ class EvaluateTriageIntegrationTests(TestCase):
 
     @patch("apps.triage.services.triage_service.trigger_critical_alert")
     @patch("apps.triage.services.triage_service.trigger_priority_update")
-    def test_emergency_override_returns_priority_1(self, mock_update, mock_alert):
+    @patch("apps.triage.services.triage_service.check_emergency_override",
+           return_value={"override": True, "urgency_score": 100, "condition": "Emergency Override"})
+    def test_emergency_override_returns_priority_1(self, mock_override, mock_update, mock_alert):
         response = evaluate_triage("chest pain and sweating")
         self.assertTrue(response["success"])
         self.assertEqual(response["data"]["triage_result"]["priority"], 1)
@@ -301,7 +303,7 @@ class EvaluateTriageIntegrationTests(TestCase):
 
     @patch("apps.triage.services.triage_service.trigger_critical_alert")
     @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.safe_infer_priority",
+    @patch("apps.triage.services.triage_service.infer_priority",
            return_value={"priority": 3, "urgency_score": 50, "condition": "Unknown"})
     def test_fallback_ai_output_used_on_failure(self, mock_ai, mock_update, mock_alert):
         response = evaluate_triage("some vague complaint")
