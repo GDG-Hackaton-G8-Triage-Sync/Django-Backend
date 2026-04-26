@@ -31,74 +31,79 @@ def update_status(current_status, score):
 # -------------------------
 # Core business rules
 # -------------------------
+from .ai_service import infer_priority
+from .validation_service import validate_symptoms
+
+
 def process_triage(ai_output, current_status="PENDING"):
     score = ai_output.get("urgency_score", 0)
 
     if score >= 80:
         priority = 1
-        base_status = "CRITICAL"
+        status = "CRITICAL"
     elif score >= 60:
         priority = 2
-        base_status = "URGENT"
+        status = "URGENT"
     elif score >= 40:
         priority = 3
-        base_status = "MEDIUM"
+        status = "MEDIUM"
     else:
         priority = 4
-        base_status = "STABLE"
-
-    # lifecycle override
-    status = update_status(current_status, score)
+        status = "STABLE"
 
     return {
         "priority": priority,
         "urgency_score": score,
         "status": status,
-        "base_status": base_status,
         "is_critical": score >= 80
     }
-
-
 # -------------------------
 # Entry function (ONLY ONE)
 # -------------------------
 def evaluate_triage(symptoms: str, current_status="PENDING"):
+    # 1. Validate input
     clean_symptoms = validate_symptoms(symptoms)
 
-    emergency = check_emergency_override(clean_symptoms)
-    source = "AI_SYSTEM"
+    # 2. AI layer (Member 5)
+    ai_score = infer_priority(clean_symptoms)
 
-    if emergency["override"]:
-        result = {
-            "priority": 1,
-            "urgency_score": 100,
-            "status": "CRITICAL",
-            "is_critical": True
-        }
+    # 3. Normalize AI output (BRIDGE STEP - YOUR ROLE)
+    ai_payload = {
+        "ai_score": ai_score,
+        "urgency_score": ai_score * 20,
+        "source": "AI_SERVICE"
+    }
 
-        event = trigger_event(result)
-        source = "EMERGENCY_OVERRIDE"
+    # 4. Apply business rules (Member 6 logic)
+    triage_result = process_triage(ai_payload, current_status)
 
-    else:
-        score = safe_infer_priority(clean_symptoms)
+    # 5. Build SYSTEM RESPONSE (THIS IS YOUR KEY ROLE)
+    response = {
+        "triage_result": triage_result,
 
-        ai_output = {
-            "urgency_score": score,
-            "condition": "AI Generated"
-        }
+        # 👇 for staff dashboard
+        "staff_view": {
+            "priority": triage_result["priority"],
+            "status": triage_result["status"],
+            "is_critical": triage_result["is_critical"]
+        },
 
-        result = process_triage(ai_output, current_status)
-        event = trigger_event(result)
+        # 👇 for admin dashboard
+        "admin_view": {
+            "ai_score": ai_score,
+            "urgency_score": ai_payload["urgency_score"],
+            "decision_source": "AI + RULE_ENGINE"
+        },
 
-    return {
-        "success": True,
-        "data": {
-            "triage_result": result,
-            "event": event,
-            "source": source,
-            "module": "member6_triage_service"
+        # 👇 for system tracking
+        "system_meta": {
+            "module": "member6_bridge",
+            "status_flow": current_status,
+            "source": "AI -> BRIDGE -> RULES"
         }
     }
+
+    return response
 def trigger_event(result):
     status = result.get("status")
     score = result.get("urgency_score")
