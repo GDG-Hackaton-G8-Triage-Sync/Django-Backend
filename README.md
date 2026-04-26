@@ -1,120 +1,180 @@
-
 # TriageSync Backend
 
-## 🚀 Deployed Backend
+A Django REST API backend for a real-time medical triage system built for the GDG Hackathon. Patients submit symptoms, an AI engine prioritizes them, and medical staff see a live-updating queue via WebSocket.
 
-Production: https://django-backend-4r5p.onrender.com/
-
-Professional Django backend scaffold for a medical triage platform.
-
-## Stack
-- Django
-- Django REST Framework
-- JWT authentication (SimpleJWT)
-- Django Channels (WebSocket support)
-
-## Quick Start
-1. Create and activate virtual environment.
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Apply migrations:
-   python manage.py migrate
-4. Run server:
-   python manage.py runserver
-
-## Project Layout
-- config: central Django configuration (settings, URLs, ASGI/WSGI)
-- apps.authentication: user and auth flows
-- apps.patients: patient submission flows
-- apps.triage: triage analysis and validation services
-- apps.realtime: websocket consumers and event broadcasting
-- apps.dashboard: dashboard and patient listing APIs
-- apps.core: shared constants, exceptions, middleware, and response helpers
+🚀 **Deployed Backend:** https://django-backend-4r5p.onrender.com/
 
 ---
 
-# 🏗️ 🧠 FINAL DJANGO BACKEND STRUCTURE (UPDATED)
+## Tech Stack
 
-```text
+- Python / Django 5.1
+- Django REST Framework + SimpleJWT
+- Django Channels (WebSocket via ASGI)
+- PostgreSQL
+- Redis (channel layer for production)
+- Daphne / Uvicorn (ASGI server)
+
+---
+
+## Project Structure
+
+```
 triagesync_backend/
 ├── config/                          # PROJECT CONFIGURATION
-│   ├── __init__.py
 │   ├── settings.py                  # JWT, DRF, Channels, DB config
-│   ├── urls.py                     # Root routes
-│   ├── asgi.py                     # WebSocket entry (Channels)
-│   ├── wsgi.py
+│   ├── urls.py                      # Root routes
+│   ├── asgi.py                      # WebSocket entry (Channels)
+│   └── wsgi.py
 │
-├── apps/                            # ALL APPLICATION MODULES
-│
-│ ├── authentication/               🔐 AUTH MODULE (Member 1 + 2)
-│ │   ├── models.py                 # Custom User model (role-based)
-│ │   ├── admin.py
-│ │   ├── apps.py
-│ │   ├── urls.py
-│ │   ├── views.py                  # login endpoint
-│ │   ├── serializers.py            # login/register validation
-│ │   ├── permissions.py            # role-based access
-│ │   ├── services/
-│ │   │   ├── auth_service.py       # JWT logic, token handling
-│ │   │   └── user_service.py
-│ │   └── tests.py
-│
-│ ├── patients/                     🧑 PATIENT MODULE (Member 3 + 4)
-│ │   ├── models.py                 # Patient submission model
-│ │   ├── urls.py
-│ │   ├── views.py                  # /api/triage/
-│ │   ├── serializers.py            # input validation (500 chars)
-│ │   ├── services/
-│ │   │   ├── patient_service.py    # submit symptom logic
-│ │   │   └── history_service.py
-│ │   └── tests.py
-│
-│ ├── triage/                       🧠 AI + DECISION ENGINE
-│ │   ├── models.py                 # TriageResult model
-│ │   ├── urls.py
-│ │   ├── views.py                  # connects AI → response
-│ │   ├── serializers.py
-│ │   ├── services/                 # CORE INTELLIGENCE LAYER
-│ │   │   ├── ai_service.py         # OpenAI/Gemini API call (Member 5)
-│ │   │   ├── triage_service.py     # priority + urgency logic (Member 6)
-│ │   │   ├── validation_service.py # JSON validation + fallback
-│ │   │   └── prompt_engine.py      # AI prompt templates
-│ │   └── tests.py
-│
-│ ├── realtime/                     ⚡ REAL-TIME SYSTEM (Member 8)
-│ │   ├── consumers.py              # WebSocket consumer (Channels)
-│ │   ├── routing.py                # WS routing
-│ │   ├── urls.py
-│ │   ├── services/
-│ │   │   ├── broadcast_service.py  # send updates to dashboard
-│ │   │   └── event_service.py      # event formatting
-│ │   └── tests.py
-│
-│ ├── dashboard/                    📊 DASHBOARD DATA API (Member 4)
-│ │   ├── views.py                  # GET /api/patients/
-│ │   ├── urls.py
-│ │   ├── serializers.py
-│ │   ├── services/
-│ │   │   ├── dashboard_service.py  # sorting + filtering logic
-│ │   └── tests.py
-│
-│ ├── core/                         🧰 SHARED UTILITIES
-│ │   ├── utils.py
-│ │   ├── constants.py
-│ │   ├── exceptions.py
-│ │   ├── response.py               # standard API response format (use this, do NOT use responses.py)
-│ │   └── middleware.py
----
-## ⚠️ Naming Best Practice
-
-> Only use <b>core/response.py</b> for response utilities. <br>
-> <b>Do NOT use core/responses.py</b> to avoid confusion and duplication.
+├── apps/
+│   ├── authentication/              # JWT auth, role-based user model
+│   ├── core/                        # Shared utils, middleware, response helpers
+│   ├── patients/                    # Patient symptom submission
+│   ├── triage/                      # AI triage logic + priority engine
+│   ├── dashboard/                   # Staff/admin dashboard APIs
+│   └── realtime/                    # WebSocket consumer + broadcast system
 │
 ├── requirements.txt
-├── manage.py
-└── README.md
+└── manage.py
+```
+
+> ⚠️ Only use `core/response.py` for response utilities. Do NOT use `core/responses.py`.
+
+---
+
+## Setup
+
+```bash
+# 1. Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Create .env file and fill in values
+cp .env.example .env
+
+# 4. Apply migrations
+python manage.py migrate
+
+# 5. Start server (ASGI required for WebSocket)
+daphne config.asgi:application
 ```
 
 ---
 
+## Environment Variables
 
+| Variable | Required | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | ✅ | Django secret key |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `REDIS_URL` | ⚠️ | Redis URL — falls back to in-memory if not set |
+| `DJANGO_DEBUG` | optional | `true` for dev, `false` for prod |
+| `DJANGO_ALLOWED_HOSTS` | optional | Comma-separated allowed hosts |
+| `CORS_ALLOW_ALL_ORIGINS` | optional | `true` to allow all CORS origins |
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/v1/auth/register/` | Public | Register new user |
+| POST | `/api/v1/auth/login/` | Public | Login, get JWT tokens |
+| POST | `/api/v1/patients/submit/` | Patient | Submit symptoms |
+| GET | `/api/v1/dashboard/patients/` | Staff/Admin | Get patient queue |
+| WS | `ws://.../ws/triage/events/` | Staff/Admin | Real-time event stream |
+
+---
+
+## Real-Time WebSocket (Member 8 — ✅ Implemented)
+
+### Connection
+```
+ws://your-domain.com/ws/triage/events/
+```
+
+This is a **server-push only** channel. Clients connect and listen — no need to send messages.
+
+### Event Types
+
+**patient_created** — fires when a new patient is triaged
+```json
+{
+  "type": "patient_created",
+  "data": { "id": 101, "priority": 2, "urgency_score": 75 },
+  "timestamp": "2026-04-24T10:30:00Z"
+}
+```
+
+**priority_update** — fires when priority is re-evaluated
+```json
+{
+  "type": "priority_update",
+  "data": { "id": 101, "priority": 1, "urgency_score": 92 },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+**critical_alert** — auto-fires when priority == 1 (urgency_score >= 80)
+```json
+{
+  "type": "critical_alert",
+  "data": { "id": 101, "priority": 1, "message": "Critical patient detected!" },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+**status_changed** — fires when staff updates patient status
+```json
+{
+  "type": "status_changed",
+  "data": { "id": 101, "status": "in_progress" },
+  "timestamp": "2026-04-24T10:32:00Z"
+}
+```
+
+### Flutter Integration
+1. Connect to `ws://your-domain/ws/triage/events/`
+2. Listen for incoming JSON messages
+3. Parse the `type` field to handle each event
+
+### Mock Server (test without Django)
+```bash
+pip install websockets
+python mock_ws_server.py
+# Connect Postman or Flutter to ws://localhost:8765
+```
+
+### Functions Other Members Call
+```python
+from apps.realtime.services.broadcast_service import (
+    broadcast_patient_created,   # M3 — call after saving submission
+    broadcast_priority_update,   # M6 — call after re-evaluation
+    broadcast_status_changed,    # M4 — call after status PATCH
+)
+```
+
+---
+
+## Running Tests
+
+```bash
+# From triagesync_backend/
+pytest apps/realtime/tests.py -v
+```
+
+---
+
+## Branches
+
+| Branch | Description |
+|---|---|
+| `main` | Stable base |
+| `dev` | Integration branch — all members merge here |
+| `realtimefeater` | Member 8 — WebSocket + broadcast system |
+| `member6-triage-logic` | Member 6 — Triage priority engine |
+| `feature/AI_service` | Member 5 — AI service layer |
