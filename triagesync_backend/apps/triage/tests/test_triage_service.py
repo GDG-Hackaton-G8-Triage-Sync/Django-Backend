@@ -16,14 +16,14 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
-from apps.triage.services.triage_service import (
+from triagesync_backend.apps.triage.services.triage_service import (
     calculate_priority,
     check_emergency_override,
     evaluate_triage,
     process_triage,
     safe_infer_priority,
 )
-from apps.triage.services.validation_service import (
+from triagesync_backend.apps.triage.services.validation_service import (
     get_fallback_ai_output,
     validate_ai_output,
     validate_symptoms,
@@ -186,20 +186,20 @@ class EmergencyOverrideTests(TestCase):
 # ─────────────────────────────────────────────
 class SafeInferPriorityTests(TestCase):
 
-    @patch("apps.triage.services.triage_service.infer_priority", side_effect=Exception("AI timeout"))
+    @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority", side_effect=Exception("AI timeout"))
     @override_settings(TRIAGE_FALLBACK=CUSTOM_FALLBACK)
     def test_ai_exception_returns_fallback(self, mock_ai):
         result = safe_infer_priority("some symptoms")
         self.assertEqual(result["priority"], 3)
         self.assertEqual(result["urgency_score"], 50)
 
-    @patch("apps.triage.services.triage_service.infer_priority", return_value={"bad": "data"})
+    @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority", return_value={"bad": "data"})
     @override_settings(TRIAGE_FALLBACK=CUSTOM_FALLBACK)
     def test_invalid_ai_output_returns_fallback(self, mock_ai):
         result = safe_infer_priority("some symptoms")
         self.assertEqual(result["priority"], 3)
 
-    @patch("apps.triage.services.triage_service.infer_priority", return_value={
+    @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority", return_value={
         "priority": 1, "urgency_score": 95, "condition": "Cardiac Event"
     })
     def test_valid_ai_output_returned_as_is(self, mock_ai):
@@ -237,18 +237,18 @@ class ProcessTriageTests(TestCase):
 # ─────────────────────────────────────────────
 class CriticalAlertBroadcastTests(TestCase):
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.check_emergency_override",
-           return_value={"override": True, "urgency_score": 100, "condition": "Emergency Override"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.check_emergency_override",
+            return_value={"override": True, "urgency_score": 100, "condition": "Emergency Override"})
     def test_critical_alert_fired_for_priority_1(self, mock_override, mock_update, mock_alert):
         evaluate_triage("chest pain")
         mock_alert.assert_called_once()
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.safe_infer_priority",
-           return_value={"priority": 4, "urgency_score": 30, "condition": "Minor"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.safe_infer_priority",
+            return_value={"priority": 4, "urgency_score": 30, "condition": "Minor"})
     def test_critical_alert_not_fired_for_low_priority(self, mock_ai, mock_update, mock_alert):
         evaluate_triage("mild headache")
         mock_alert.assert_not_called()
@@ -259,10 +259,10 @@ class CriticalAlertBroadcastTests(TestCase):
 # ─────────────────────────────────────────────
 class PriorityUpdateBroadcastTests(TestCase):
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.safe_infer_priority",
-           return_value={"priority": 3, "urgency_score": 50, "condition": "Fever"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.safe_infer_priority",
+            return_value={"priority": 3, "urgency_score": 50, "condition": "Fever"})
     def test_priority_update_always_fired(self, mock_ai, mock_update, mock_alert):
         evaluate_triage("fever")
         mock_update.assert_called_once()
@@ -277,10 +277,10 @@ class EvaluateTriageIntegrationTests(TestCase):
         with self.assertRaises(ValueError):
             evaluate_triage("")
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.check_emergency_override",
-           return_value={"override": True, "urgency_score": 100, "condition": "Emergency Override"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.check_emergency_override",
+            return_value={"override": True, "urgency_score": 100, "condition": "Emergency Override"})
     def test_emergency_override_returns_priority_1(self, mock_override, mock_update, mock_alert):
         response = evaluate_triage("chest pain and sweating")
         self.assertTrue(response["success"])
@@ -288,10 +288,10 @@ class EvaluateTriageIntegrationTests(TestCase):
         self.assertEqual(response["data"]["source"], "EMERGENCY_OVERRIDE")
         self.assertEqual(response["data"]["event"]["event_type"], "critical_alert")
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.safe_infer_priority",
-           return_value={"priority": 3, "urgency_score": 50, "condition": "Fever"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.safe_infer_priority",
+            return_value={"priority": 3, "urgency_score": 50, "condition": "Fever"})
     def test_ai_path_returns_correct_structure(self, mock_ai, mock_update, mock_alert):
         response = evaluate_triage("mild fever")
         self.assertTrue(response["success"])
@@ -301,10 +301,10 @@ class EvaluateTriageIntegrationTests(TestCase):
         self.assertEqual(data["source"], "AI_SYSTEM")
         self.assertEqual(data["module"], "member6_triage_service")
 
-    @patch("apps.triage.services.triage_service.trigger_critical_alert")
-    @patch("apps.triage.services.triage_service.trigger_priority_update")
-    @patch("apps.triage.services.triage_service.infer_priority",
-           return_value={"priority": 3, "urgency_score": 50, "condition": "Unknown"})
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
+        @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
+        @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority",
+            return_value={"priority": 3, "urgency_score": 50, "condition": "Unknown"})
     def test_fallback_ai_output_used_on_failure(self, mock_ai, mock_update, mock_alert):
         response = evaluate_triage("some vague complaint")
         self.assertEqual(response["data"]["triage_result"]["urgency_score"], 50)
