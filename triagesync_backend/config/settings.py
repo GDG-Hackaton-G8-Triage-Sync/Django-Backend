@@ -58,7 +58,7 @@ MIDDLEWARE = [
     "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "triagesync_backend.config.urls"
 
 TEMPLATES = [
     {
@@ -75,26 +75,33 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
+WSGI_APPLICATION = "triagesync_backend.config.wsgi.application"
+ASGI_APPLICATION = "triagesync_backend.config.asgi.application"
 
 database_url = os.getenv("DATABASE_URL")
-if not database_url:
-    raise ValueError("DATABASE_URL is not set")
 
-tmpPostgres = urlparse(database_url)
-
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": tmpPostgres.path.replace("/", ""),
-        "USER": tmpPostgres.username,
-        "PASSWORD": tmpPostgres.password,
-        "HOST": tmpPostgres.hostname,
-        "PORT": tmpPostgres.port or 5432,
-        "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
+if database_url:
+    tmpPostgres = urlparse(database_url)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": tmpPostgres.path.replace("/", ""),
+            "USER": tmpPostgres.username,
+            "PASSWORD": tmpPostgres.password,
+            "HOST": tmpPostgres.hostname,
+            "PORT": tmpPostgres.port or 5432,
+            "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
+        }
     }
-}
+else:
+    # Local fallback for development
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -128,10 +135,23 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+REDIS_URL = os.getenv("REDIS_URL")
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+            },
+        }
     }
-}
+else:
+    # Fallback for local dev without Redis — not suitable for multi-process deployments
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", True)

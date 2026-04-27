@@ -1,9 +1,26 @@
 import json
+
 from channels.generic.websocket import AsyncWebsocketConsumer
+
+TRIAGE_GROUP = "triage_events"
 
 
 class TriageEventsConsumer(AsyncWebsocketConsumer):
-    group_name = "triage_events"
+    """
+    WebSocket consumer for real-time triage events.
+
+    Clients connect to ws/triage/events/ and receive broadcast events:
+      - patient_created
+      - priority_update
+      - critical_alert
+      - status_changed
+
+    Note: JWT authentication on connect is handled by M2 (auth middleware).
+    This consumer assumes the connection is already authenticated by the time
+    it reaches connect().
+    """
+
+    group_name = TRIAGE_GROUP
 
     async def connect(self):
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -13,9 +30,16 @@ class TriageEventsConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive(self, text_data=None, bytes_data=None):
-        if text_data:
-            payload = json.loads(text_data)
-            await self.send(text_data=json.dumps({"echo": payload}))
+        """
+        Clients don't send data in this system — this is a server-push only channel.
+        We silently ignore any incoming messages.
+        """
+        pass
+
+    # --- Group message handlers ---
+    # Each method name maps to the "type" field in group_send calls.
+    # "triage_event" maps to triage_event() via Django Channels convention.
 
     async def triage_event(self, event):
+        """Forwards any broadcast payload to the connected WebSocket client."""
         await self.send(text_data=json.dumps(event["payload"]))

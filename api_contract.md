@@ -313,32 +313,83 @@ if priority == 1 → trigger critical_alert
   - No extra text
   - Invalid output triggers fallback system
 
-## 6. Real-Time WebSocket API
-- **Connection:** ws://your-domain.com/ws/triage/
-- **Auth:** First message after connect:
-  ```json
-  {
-    "token": "jwt_token_here"
-  }
-  ```
-- **Event: NEW PATIENT UPDATE (Server → Client):**
-  ```json
-  {
-    "type": "patient_update",
-    "data": {
-      "id": 101,
-      "priority": 1,
-      "urgency_score": 95,
-      "condition": "Cardiac Event"
-    }
-  }
-  ```
-- **Event Types:**
-  | Event           | Description                |
-  |-----------------|---------------------------|
-  | patient_update  | New patient added         |
-  | triage_update   | AI processed result       |
-  | system_alert    | Critical patient warning  |
+## 6. Real-Time WebSocket API (✅ Implemented — Member 8)
+
+- **Connection:** `ws://your-domain.com/ws/triage/events/`
+- **Protocol:** Server-push only. Clients connect and listen — do not send messages.
+- **Auth:** JWT middleware handled by M2 (plugs into connect phase)
+
+### Event Structure (all events follow this format)
+```json
+{
+  "type": "event_type_here",
+  "data": { ... },
+  "timestamp": "2026-04-24T10:30:00Z"
+}
+```
+
+### Event: patient_created
+Fires when a new patient is triaged. If priority == 1, `critical_alert` also fires automatically.
+```json
+{
+  "type": "patient_created",
+  "data": { "id": 101, "priority": 2, "urgency_score": 75 },
+  "timestamp": "2026-04-24T10:30:00Z"
+}
+```
+
+### Event: priority_update
+Fires when triage logic re-evaluates a patient's priority.
+```json
+{
+  "type": "priority_update",
+  "data": { "id": 101, "priority": 1, "urgency_score": 92 },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+### Event: critical_alert 🚨
+Auto-fires whenever priority == 1 (urgency_score >= 80). Always comes after `patient_created` or `priority_update`.
+```json
+{
+  "type": "critical_alert",
+  "data": { "id": 101, "priority": 1, "message": "Critical patient detected!" },
+  "timestamp": "2026-04-24T10:31:00Z"
+}
+```
+
+### Event: status_changed
+Fires when staff updates a patient's status.
+```json
+{
+  "type": "status_changed",
+  "data": { "id": 101, "status": "in_progress" },
+  "timestamp": "2026-04-24T10:32:00Z"
+}
+```
+
+### Status Values
+| Value | Meaning |
+|---|---|
+| `waiting` | Patient submitted, not yet seen |
+| `in_progress` | Staff is attending |
+| `completed` | Case resolved |
+
+### Trigger Points (when broadcasts fire)
+| Trigger | Event Sent |
+|---|---|
+| New patient triaged | `patient_created` (+ `critical_alert` if priority 1) |
+| Priority re-evaluated | `priority_update` (+ `critical_alert` if priority 1) |
+| Staff updates status | `status_changed` |
+
+### Functions other members call (import from broadcast_service)
+```python
+from apps.realtime.services.broadcast_service import (
+    broadcast_patient_created,   # M3 calls after saving submission
+    broadcast_priority_update,   # M6 calls after re-evaluation
+    broadcast_status_changed,    # M4 calls after status PATCH
+)
+```
 
 ## 7. Error Handling Standard
 - **401 Unauthorized:**
