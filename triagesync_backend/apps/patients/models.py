@@ -49,7 +49,5 @@ class PatientSubmission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
-    def __str__(self):
-        return f"TriageItem {self.id} - {self.priority} - {self.urgency_score}"
     def __str__(self) -> str:
         return f"Submission {self.id} by {self.patient.name}"

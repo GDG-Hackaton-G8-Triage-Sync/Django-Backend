@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Test Triage AI API",
+			"type": "shell",
+			"command": "curl -X POST http://127.0.0.1:8000/api/v1/triage/ai/ -H \"Content-Type: application/json\" -d \"{\\\"description\\\": \\\"60-year-old male, severe chest pain, shortness of breath, sweating\\\"}\"",
+			"problemMatcher": []
+		}
+	]
+}

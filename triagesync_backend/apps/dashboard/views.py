@@ -1,23 +1,11 @@
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.utils import timezone
-
-from apps.patients.models import PatientSubmission
 from .serializers import DashboardPatientSerializer
-from .services.dashboard_service import (
-    get_patient_queue,
-    update_patient_status,
-    get_admin_overview,
-    get_admin_analytics,
-    update_priority,
-    verify_patient
-)
+from .services.dashboard_service import get_patient_queue
+from apps.patients.models import PatientSubmission
+from .services.dashboard_service import update_priority, verify_patient
 
-
-# =========================
-# STAFF VIEWS
-# =========================
 
 class StaffPatientQueueView(APIView):
     """
@@ -33,6 +21,8 @@ class StaffPatientQueueView(APIView):
 
         return Response(serializer.data)
 
+from .services.dashboard_service import update_patient_status
+
 
 class UpdatePatientStatusView(APIView):
     """
@@ -40,23 +30,40 @@ class UpdatePatientStatusView(APIView):
     """
 
     def patch(self, request, id):
-        status_value = request.data.get("status")
+        status = request.data.get("status")
 
-        patient = update_patient_status(id, status_value)
+        patient = update_patient_status(id, status)
 
         if not patient:
-            return Response(
-                {"code": "NOT_FOUND", "message": "Patient not found"},
-                status=404
-            )
+            return Response({"error": "Patient not found"}, status=404)
 
         return Response({"message": "Status updated"})
+    
+from .services.dashboard_service import get_admin_overview
 
 
+class AdminOverviewView(APIView):
+    """
+    GET /api/v1/admin/overview/
+    """
+
+    def get(self, request):
+        data = get_admin_overview()
+        return Response(data)
+    
+from .services.dashboard_service import get_admin_analytics
+
+
+class AdminAnalyticsView(APIView):
+    """
+    GET /api/v1/admin/analytics/
+    """
+
+    def get(self, request):
+        data = get_admin_analytics()
+        return Response(data)
+    
 class UpdatePatientPriorityView(APIView):
-    """
-    PATCH /api/v1/staff/patient/{id}/priority/
-    """
 
     def patch(self, request, id):
         priority = request.data.get("priority")
@@ -69,6 +76,8 @@ class UpdatePatientPriorityView(APIView):
 
         try:
             patient = PatientSubmission.objects.get(id=id)
+
+            # 👉 call service instead of writing logic here
             update_priority(patient, priority)
 
             return Response({"message": "Priority updated successfully"})
@@ -78,17 +87,18 @@ class UpdatePatientPriorityView(APIView):
                 {"code": "NOT_FOUND", "message": "Patient not found"},
                 status=404
             )
+        
+
+from django.utils import timezone
 
 
 class VerifyPatientView(APIView):
-    """
-    PATCH /api/v1/staff/patient/{id}/verify/
-    """
 
     def patch(self, request, id):
         try:
             patient = PatientSubmission.objects.get(id=id)
 
+            # 👉 call service
             result = verify_patient(patient, request.user)
 
             if result is None:
@@ -107,27 +117,3 @@ class VerifyPatientView(APIView):
                 {"code": "NOT_FOUND", "message": "Patient not found"},
                 status=404
             )
-
-
-# =========================
-# ADMIN VIEWS
-# =========================
-
-class AdminOverviewView(APIView):
-    """
-    GET /api/v1/admin/overview/
-    """
-
-    def get(self, request):
-        data = get_admin_overview()
-        return Response(data)
-
-
-class AdminAnalyticsView(APIView):
-    """
-    GET /api/v1/admin/analytics/
-    """
-
-    def get(self, request):
-        data = get_admin_analytics()
-        return Response(data)

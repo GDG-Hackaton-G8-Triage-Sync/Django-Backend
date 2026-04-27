@@ -47,33 +47,6 @@ class Migration(migrations.Migration):
                 ('output_json', models.JSONField()),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('triage_session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='ai_result', to='triage.triagesession')),
-                ('session_id', models.CharField(max_length=20)),
-                ('symptoms', models.TextField()),
-                ('status', models.CharField(max_length=20)),
-                ('urgency_score', models.IntegerField(blank=True, null=True)),
-                ('priority_level', models.IntegerField(blank=True, null=True)),
-                ('queue_position', models.IntegerField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('patient', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='triage_sessions', to='patients.patient')),
-                ('staff', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='handled_sessions', to=settings.AUTH_USER_MODEL)),
-            ],
-        ),
-        migrations.CreateModel(
-            name='FileUpload',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('file', models.FileField(upload_to='uploads/')),
-                ('uploaded_at', models.DateTimeField(auto_now_add=True)),
-                ('triage_session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='files', to='triage.triagesession')),
-            ],
-        ),
-        migrations.CreateModel(
-            name='AIResult',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('output_json', models.JSONField()),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('triage_session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='ai_result', to='triage.triagesession')),
             ],
         ),
     ]

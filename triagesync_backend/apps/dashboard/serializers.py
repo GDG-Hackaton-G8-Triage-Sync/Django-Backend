@@ -1,6 +1,5 @@
 from rest_framework import serializers
-
-from triagesync_backend.apps.patients.models import PatientSubmission
+from apps.patients.models import PatientSubmission
 
 
 class DashboardPatientSerializer(serializers.ModelSerializer):

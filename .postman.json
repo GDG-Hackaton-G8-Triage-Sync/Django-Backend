@@ -1,0 +1,491 @@
+{
+  "info": {
+    "name": "TriageSync API Collection",
+    "description": "Comprehensive API testing for TriageSync Django Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "triagesync-api-v1",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url_local",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "base_url_prod",
+      "value": "https://django-backend-4r5p.onrender.com",
+      "type": "string"
+    },
+    {
+      "key": "base_url",
+      "value": "{{base_url_local}}",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Triage AI Endpoints",
+      "item": [
+        {
+          "name": "POST /api/v1/triage/ai/ - Critical Cardiac Case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "    pm.expect(jsonData).to.have.property('urgency_score');",
+                  "    pm.expect(jsonData).to.have.property('condition');",
+                  "    pm.expect(jsonData).to.have.property('category');",
+                  "    pm.expect(jsonData).to.have.property('is_critical');",
+                  "    pm.expect(jsonData).to.have.property('explanation');",
+                  "    pm.expect(jsonData).to.have.property('recommended_action');",
+                  "    pm.expect(jsonData).to.have.property('reason');",
+                  "    pm.expect(jsonData).to.have.property('source');",
+                  "});",
+                  "",
+                  "pm.test(\"Priority level is valid (1-5)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 5);",
+                  "});",
+                  "",
+                  "pm.test(\"Urgency score is valid (0-100)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.urgency_score).to.be.within(0, 100);",
+                  "});",
+                  "",
+                  "pm.test(\"Category is valid enum\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var validCategories = ['Cardiac', 'Respiratory', 'Trauma', 'Neurological', 'General'];",
+                  "    pm.expect(validCategories).to.include(jsonData.category);",
+                  "});",
+                  "",
+                  "pm.test(\"is_critical is boolean\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(typeof jsonData.is_critical).to.equal('boolean');",
+                  "});",
+                  "",
+                  "pm.test(\"Explanation is non-empty array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.explanation).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"Critical cardiac case should have high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"chest pain radiating to left arm, sweating\",\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test critical cardiac case with emergency symptoms"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Respiratory Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respiratory emergency should be critical\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.equal(1);",
+                  "    pm.expect(jsonData.is_critical).to.be.true;",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(90);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"not breathing, unconscious\",\n  \"age\": 30,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test respiratory arrest emergency"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Minor Symptoms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Minor symptoms should have low priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(4, 5);",
+                  "    pm.expect(jsonData.is_critical).to.be.false;",
+                  "    pm.expect(jsonData.urgency_score).to.be.below(40);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"mild headache and runny nose\",\n  \"age\": 25,\n  \"gender\": \"other\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test minor symptoms with low priority"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Missing Symptoms (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test validation error for missing symptoms"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Symptoms Too Long (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error indicates symptoms too long\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error).to.include('too long');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\",\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test validation error for symptoms exceeding 500 characters"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Age Normalization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Invalid age handled gracefully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"fever and cough\",\n  \"age\": 999,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test age normalization (invalid age should be handled)"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Gender Normalization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Gender variations handled\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"dizziness and nausea\",\n  \"age\": 35,\n  \"gender\": \"nb\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test gender normalization (nb should map to other)"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Stroke Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Stroke should be critical\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(85);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"facial droop, slurred speech, stroke symptoms\",\n  \"age\": 65,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test stroke emergency detection"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Seizure Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Seizure should be high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"seizure, convulsions\",\n  \"age\": 28,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test seizure emergency detection"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Medium Priority Fever",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"High fever should be medium-high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(2, 3);",
+                  "    pm.expect(jsonData.urgency_score).to.be.within(60, 80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"high fever above 40 degrees, severe headache\",\n  \"age\": 12,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test high fever medium priority case"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

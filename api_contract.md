@@ -1,436 +1,180 @@
+# Member 5 — API Contract (Current Format)
 
-# 📡 🔥 UPDATED API CONTRACT (WITH STAFF + ADMIN DASHBOARD)
+Covers only the AI-layer endpoints owned by Member 5. All requests/responses
+are JSON unless otherwise noted.
 
-## 👥 USER ROLES (FINAL)
-| Role    | Description                |
-|---------|----------------------------|
-| patient | submits symptoms           |
-| staff   | views real-time queue      |
-| admin   | manages system + monitoring|
+- **Base URL (local):** `http://localhost:8000`
+- **Base URL (prod):** `https://django-backend-4r5p.onrender.com`
+- **Auth:** none required on these endpoints (permission class is `AllowAny`).
 
-## 🔐 ROLE RULES
-| Endpoint           | Patient | Staff | Admin |
-|--------------------|:-------:|:-----:|:-----:|
-| Submit symptoms    |   ✅    |  ❌   |  ❌   |
-| View dashboard     |   ❌    |  ✅   |  ✅   |
-| Admin controls     |   ❌    |  ❌   |  ✅   |
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/v1/triage/ai/` | `POST` | Text-symptom AI triage. |
+| `/api/v1/triage/pdf-extract/` | `POST` | PDF-upload AI triage. |
+| `/api/v1/triage/evaluate/` | `POST` | Thin M6 placeholder (not documented here). |
 
 ---
 
-## 📊 1. STAFF DASHBOARD API (Flutter Integration)
+## 1. `POST /api/v1/triage/ai/`
 
-This is the main UI for healthcare staff
+### 1.1 Request (`application/json`)
 
-
-### 📋 1.1 GET STAFF QUEUE (MOCK)
-**GET** /api/dashboard/staff/queue/
-**Access:** Staff only
-**Response:**
-```
-{
-  "total": 2,
-  "queue": [
-    {
-      "session_id": "TS-1111",
-      "priority_level": 1,
-      "urgency_score": 98,
-      "wait_time_seconds": 240
-    },
-    {
-      "session_id": "TS-2222",
-      "priority_level": 2,
-      "urgency_score": 85,
-      "wait_time_seconds": 600
-    }
-  ]
-}
-```
-**Behavior:**
-- Placeholder/mock data for demo
-
-### 🔍 1.2 FILTER PATIENTS (OPTIONAL BUT USEFUL)
-**GET** /api/dashboard/staff/patients/?priority=1
-or
-**GET** /api/dashboard/staff/patients/?status=waiting
-
-
-### 1.2 GET PATIENT DETAIL (MOCK)
-**GET** /api/dashboard/staff/patient/{session_id}/
-**Response:**
-```
-{
-  "session_id": "TS-1111",
-  "symptoms": "Chest pain...",
-  "vitals": {
-    "hr": 110,
-    "spo2": 92
-  },
-  "ai_reasoning": {
-    "condition": "ACS"
-  }
-}
-```
-**Behavior:**
-- Placeholder/mock data for demo
-
-### 1.3 OVERRIDE PRIORITY (MOCK)
-**POST** /api/dashboard/staff/patient/{session_id}/override/
-**Request:**
-```
-{
-  "new_priority": 2,
-  "reason": "Clinical observation"
-}
-```
-**Response:**
-```
-{
-  "success": true
-}
-```
-**Behavior:**
-- Placeholder/mock data for demo
-
-## ⚡ STAFF REAL-TIME EVENTS (Flutter WebSocket)
-**EVENT: NEW PATIENT**
-{
-  "type": "patient_created",
-  "data": {
-    "id": 101,
-    "priority": 1,
-    "urgency_score": 95
-  }
-}
-**EVENT: PRIORITY UPDATE**
-{
-  "type": "priority_update",
-  "data": {
-    "id": 101,
-    "priority": 1,
-    "urgency_score": 98
-  }
-}
-**EVENT: CRITICAL ALERT 🚨**
-{
-  "type": "critical_alert",
-  "message": "Critical patient detected!",
-  "data": {
-    "id": 101,
-    "priority": 1
-  }
-}
-
-## 🛠️ 2. ADMIN DASHBOARD API (SYSTEM CONTROL)
-
-This is NOT for demo UI only, but adds serious value.
-
-### 📊 2.1 SYSTEM OVERVIEW
-**GET** /api/dashboard/admin/overview/
-**Response:**
-{
-  "total_patients": 120,
-  "waiting": 45,
-  "in_progress": 30,
-  "completed": 45,
-  "critical_cases": 10
-}
-
-### 📈 2.2 GET ANALYTICS (OPTIONAL)
-**GET** /api/dashboard/admin/analytics/
-**Response:**
-{
-  "avg_urgency_score": 67,
-  "peak_hour": "14:00",
-  "common_conditions": ["Cardiac Event", "Migraine"]
-}
-
-### 👥 2.3 MANAGE USERS
-Get users: **GET** /api/admin/users/
-Change role: **PATCH** /api/admin/users/{id}/role/
-{
-  "role": "staff"
-}
-
-### 🚫 2.4 DELETE PATIENT (ADMIN CONTROL)
-**DELETE** /api/admin/patient/{id}/
-
-## 📡 3. FLUTTER INTEGRATION GUIDE
-### 📱 STAFF APP SCREENS
-1. Login Screen → /api/auth/login/
-2. Dashboard Screen → /api/dashboard/staff/patients/
-   - WebSocket: ws://server/ws/triage/
-3. Status Update Button → PATCH /status/
-
-### 📱 ADMIN APP SCREENS
-1. Admin Dashboard → /api/dashboard/admin/overview/
-2. Analytics Page → /analytics/
-3. User Management → /admin/users/
-
-## ⚙️ 4. IMPORTANT BACKEND RULES
-### 🔐 Role Enforcement (VERY IMPORTANT)
-- Staff endpoints → IsStaff
-- Admin endpoints → IsAdmin
-- Patient endpoints → IsPatient
-### ⚡ Real-Time Trigger Points
-WebSocket MUST trigger on:
-- new patient created
-- triage completed
-- priority updated
-- status changed
-### 🧠 Critical Case Rule
-if priority == 1 → trigger critical_alert
-
-## 1. Base Information
-- **Base URL:** https://your-domain.com/api/
-- **Authentication Type:** JWT (JSON Web Token)
-- **Headers (Required for protected routes):**
-  ```json
-  {
-    "Authorization": "Bearer <token>",
-    "Content-Type": "application/json"
-  }
-  ```
-
-## 2. Authentication API
-### 2.1 Login
-- **Endpoint:** POST /api/auth/login/
-- **Request Body:**
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "123456"
-  }
-  ```
-- **Response (Success):**
-  ```json
-  {
-    "access_token": "jwt_access_token",
-    "refresh_token": "jwt_refresh_token",
-    "role": "patient"
-  }
-  ```
-- **Response (Failure):**
-  ```json
-  {
-    "error": "Invalid credentials"
-  }
-  ```
-
-### 2.2 Refresh Token
-- **Endpoint:** POST /api/auth/refresh/
-- **Request:**
-  ```json
-  {
-    "refresh_token": "token"
-  }
-  ```
-- **Response:**
-  ```json
-  {
-    "access_token": "new_access_token"
-  }
-  ```
-
-## 3. Patient Submission API
-### 3.1 Submit Symptoms
-- **Endpoint:** POST /api/triage/
-- **Access:** Patient only, JWT required
-- **Request Body:**
-  ```json
-  {
-    "description": "Chest pain and sweating for 30 minutes"
-  }
-  ```
-- **Validation Rules:**
-  - Max length: 500 characters
-  - Cannot be empty
-- **Response (Success):**
-  ```json
-  {
-    "id": 101,
-    "priority": 1,
-    "urgency_score": 95,
-    "condition": "Cardiac Event",
-    "status": "processed",
-    "created_at": "2026-04-14T10:30:00Z"
-  }
-  ```
-- **Response (AI Fallback):**
-  ```json
-  {
-    "id": 101,
-    "priority": 3,
-    "urgency_score": 50,
-    "condition": "Unknown - Needs Review",
-    "status": "fallback"
-  }
-  ```
-
-## 4. Dashboard API
-### 4.1 Get All Patients
-- **Endpoint:** GET /api/patients/
-- **Access:** Staff only, JWT required
-- **Response:**
-  ```json
-  [
-    {
-      "id": 101,
-      "description": "Chest pain...",
-      "priority": 1,
-      "urgency_score": 95,
-      "condition": "Cardiac Event",
-      "created_at": "2026-04-14T10:30:00Z"
-    },
-    {
-      "id": 102,
-      "description": "Headache...",
-      "priority": 3,
-      "urgency_score": 60,
-      "condition": "Migraine"
-    }
-  ]
-  ```
-- **Sorting Rule:** urgency_score DESC
-
-## 5. AI Triage Internal Pipeline
-- **AI Input Format:**
-  ```json
-  {
-    "description": "string"
-  }
-  ```
-- **AI Output (Strict Format):**
-  ```json
-  {
-    "priority": 1-5,
-    "urgency_score": 0-100,
-    "condition": "string"
-  }
-  ```
-- **Rules:**
-  - Must return JSON only
-  - No explanations
-  - No extra text
-  - Invalid output triggers fallback system
-
-## 6. Real-Time WebSocket API (✅ Implemented — Member 8)
-
-- **Connection:** `ws://your-domain.com/ws/triage/events/`
-- **Protocol:** Server-push only. Clients connect and listen — do not send messages.
-- **Auth:** JWT middleware handled by M2 (plugs into connect phase)
-
-### Event Structure (all events follow this format)
 ```json
 {
-  "type": "event_type_here",
-  "data": { ... },
-  "timestamp": "2026-04-24T10:30:00Z"
+  "symptoms": "chest pain radiating to left arm, sweating",
+  "age": 45,
+  "gender": "male"
 }
 ```
 
-### Event: patient_created
-Fires when a new patient is triaged. If priority == 1, `critical_alert` also fires automatically.
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `symptoms` | string | yes | Max 500 chars. Must contain a relevant medical keyword. |
+| `age` | integer | no | Clamped to `[0, 150]`; anything else becomes `unknown`. |
+| `gender` | string | no | Canonicalized to `male` / `female` / `other` / `unknown`. |
+
+### 1.2 Success — `200 OK`
+
 ```json
 {
-  "type": "patient_created",
-  "data": { "id": 101, "priority": 2, "urgency_score": 75 },
-  "timestamp": "2026-04-24T10:30:00Z"
+  "priority_level": 1,
+  "urgency_score": 97,
+  "condition": "Acute Angina Suspicion",
+  "category": "Cardiac",
+  "is_critical": true,
+  "explanation": ["chest pain", "sweating"],
+  "recommended_action": "Immediate ECG and transfer to ER",
+  "reason": "Possible heart attack due to chest pain and associated symptoms.",
+  "source": "ai"
 }
 ```
 
-### Event: priority_update
-Fires when triage logic re-evaluates a patient's priority.
-```json
-{
-  "type": "priority_update",
-  "data": { "id": 101, "priority": 1, "urgency_score": 92 },
-  "timestamp": "2026-04-24T10:31:00Z"
-}
-```
+Response-field rules (enforced by serializer + `normalize_ai_response`):
 
-### Event: critical_alert 🚨
-Auto-fires whenever priority == 1 (urgency_score >= 80). Always comes after `patient_created` or `priority_update`.
-```json
-{
-  "type": "critical_alert",
-  "data": { "id": 101, "priority": 1, "message": "Critical patient detected!" },
-  "timestamp": "2026-04-24T10:31:00Z"
-}
-```
+| Field | Type | Range / Enum |
+|---|---|---|
+| `priority_level` | int | `1..5` (1 = most urgent) |
+| `urgency_score` | int | `0..100` |
+| `condition` | string | short clinical label |
+| `category` | enum | `Cardiac` \| `Respiratory` \| `Trauma` \| `Neurological` \| `General` |
+| `is_critical` | bool | — |
+| `explanation` | list\<string\> | min length 1 |
+| `recommended_action` | string | — |
+| `reason` | string | 1–2 sentences |
+| `source` | string | always `"ai"` for this endpoint |
 
-### Event: status_changed
-Fires when staff updates a patient's status.
-```json
-{
-  "type": "status_changed",
-  "data": { "id": 101, "status": "in_progress" },
-  "timestamp": "2026-04-24T10:32:00Z"
-}
-```
+If the middleware attached a sanitization warning, an optional `"warning"`
+key is also included.
 
-### Status Values
-| Value | Meaning |
-|---|---|
-| `waiting` | Patient submitted, not yet seen |
-| `in_progress` | Staff is attending |
-| `completed` | Case resolved |
+### 1.3 Errors
 
-### Trigger Points (when broadcasts fire)
-| Trigger | Event Sent |
-|---|---|
-| New patient triaged | `patient_created` (+ `critical_alert` if priority 1) |
-| Priority re-evaluated | `priority_update` (+ `critical_alert` if priority 1) |
-| Staff updates status | `status_changed` |
+| Status | Trigger | Body |
+|---|---|---|
+| `400` | `symptoms` missing | `{ "error": "Missing symptoms.", "message": "…" }` |
+| `400` | `len(symptoms) > 500` | `{ "error": "Symptoms too long.", "message": "…" }` |
+| `400` | Input not medically relevant | `{ "error": "Input not relevant.", "message": "…" }` |
+| `502` | Unhandled Gemini client exception | `{ "error": "AI service unavailable.", "message": "…", "details": "<str>" }` |
+| `503` | AI error envelope (all models failed / circuit open / invalid JSON / missing field) | `{ "error": "AI unavailable, staff review required", "message": "…", "details": ["gemini-2.5-flash (attempt 1): Quota exceeded …"], "error_types": ["quota"] }` |
+| `500` | Serializer validation failed on AI dict | `{ "error": "AI response format error.", "message": "…", "details": <serializer_errors>, "raw_ai": <dict> }` |
 
-### Functions other members call (import from broadcast_service)
-```python
-from apps.realtime.services.broadcast_service import (
-    broadcast_patient_created,   # M3 calls after saving submission
-    broadcast_priority_update,   # M6 calls after re-evaluation
-    broadcast_status_changed,    # M4 calls after status PATCH
-)
-```
-
-## 7. Error Handling Standard
-- **401 Unauthorized:**
-  ```json
-  { "error": "Unauthorized access" }
-  ```
-- **403 Forbidden:**
-  ```json
-  { "error": "Permission denied" }
-  ```
-- **400 Validation Error:**
-  ```json
-  {
-    "error": "Invalid input",
-    "details": {
-      "description": "Cannot exceed 500 characters"
-    }
-  }
-  ```
-- **500 Server Error:**
-  ```json
-  { "error": "Internal server error" }
-  ```
-
-## 8. System Behavior Rules
-- **Triage Rules:**
-  - Priority 1 = Critical (life-threatening)
-  - Priority 5 = Low urgency
-- **Sorting Rule:** urgency_score DESC
-- **Real-time Rule:** Update latency < 1 second; every new triage triggers WebSocket broadcast
-- **Data Storage Rule:** Every submission stores description, AI output, timestamp, priority, urgency_score
-
-## 9. End-to-End Flow
-1. Patient logs in (JWT issued)
-2. Patient submits symptoms
-3. Backend validates input
-4. AI processes symptom
-5. Triage engine assigns priority
-6. Data stored in DB
-7. WebSocket broadcasts update
-8. Staff dashboard updates instantly
+`error_types` values: `"quota" | "not_found" | "other" | "circuit_open"`.
 
 ---
-This API contract ensures frontend-backend alignment, clean Django implementation, stable AI integration, safe fallback behavior, real-time update consistency, and hackathon-ready demo stability.
+
+## 2. `POST /api/v1/triage/pdf-extract/`
+
+### 2.1 Request (`multipart/form-data`)
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `file` | file | yes | `.pdf` only, ≤ 5 MB. |
+| `age` | integer | no | Same handling as §1. |
+| `gender` | string | no | Same handling as §1. |
+
+### 2.2 Success — `200 OK`
+
+Identical schema to §1.2 (same serializer). The `source` field is always
+`"ai"`. Extracted text is truncated to 10 000 chars before prompting.
+
+### 2.3 Errors
+
+| Status | Trigger | Body |
+|---|---|---|
+| `400` | Missing / empty file, non-PDF extension, extraction failure, no extractable text, or irrelevant content | `{ "error": "<specific>", "message": "…" }` (see below) |
+| `502` | Gemini call or `json.loads` raised | `{ "error": "AI service unavailable.", "message": "…", "details": "<str>" }` |
+| `503` | AI error envelope | `{ "error": "AI unavailable, staff review required", "message": "…", "details": [...], "error_types": [...] }` |
+| `500` | Serializer validation failed | `{ "error": "AI response format error.", "message": "…", "details": <serializer_errors>, "raw_ai": <dict> }` |
+
+Specific `400` variants:
+- `"Empty file."` — zero-byte upload.
+- `"Only PDF files are allowed."` — extension not `.pdf`.
+- `"PDF extraction failed."` — `PyPDF2` raised; includes `details`.
+- `"No text extracted."` — PDF contained no selectable text.
+- `"PDF not relevant."` — extracted text lacked medical keywords.
+
+---
+
+## 3. AI Output Contract (internal, between M5 and M6)
+
+After a successful Gemini call, `get_triage_recommendation` returns one of:
+
+**Success shape** — passes `TriageAIResponseSerializer` unchanged:
+
+```json
+{
+  "priority_level": 1,
+  "urgency_score": 97,
+  "condition": "Acute Angina Suspicion",
+  "category": "Cardiac",
+  "is_critical": true,
+  "explanation": ["chest pain"],
+  "recommended_action": "…",
+  "reason": "…"
+}
+```
+
+**Error shapes** — always carry `"error"` as the discriminator:
+
+```json
+{ "error": "AI unavailable, staff review required",
+  "user_description": "chest pain",
+  "details": ["gemini-2.5-flash (attempt 1): Quota exceeded: …"],
+  "error_types": ["quota"] }
+```
+```json
+{ "error": "AI response is not valid JSON",
+  "raw": "<cleaned response text>",
+  "parse_error": "<jsonlib message>" }
+```
+```json
+{ "error": "'category' field missing in AI response",
+  "raw": "<cleaned response text>" }
+```
+
+M6 is the consumer that decides whether an error shape should be replaced
+with a rule-based result before returning to the patient.
+
+---
+
+## 4. Behavior Guarantees (M5)
+
+- **JSON-only output.** Models are invoked in JSON mode; no markdown fences.
+- **Injection-safe prompts.** User content is wrapped in delimiter tags and
+  pre-stripped of any tag-like tokens.
+- **Bounded latency.** Each model attempt is capped at
+  `GEMINI_TIMEOUT_SECONDS` (default 8 s). Worst-case per request on transient
+  errors: `len(GEMINI_MODEL_PRIORITY) × GEMINI_MAX_RETRIES × GEMINI_TIMEOUT_SECONDS`.
+  Deterministic errors (`quota`, `not_found`) short-circuit the retry loop
+  on that model and cascade immediately, so in practice quota-exhausted paths
+  are much faster than the worst-case formula suggests.
+- **Multi-model resilience.** Default priority covers six free-tier models
+  (`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`,
+  `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-flash-8b`). Each
+  has an independent daily quota, so exhausting one simply cascades to the
+  next; models not enabled for the active API key are filtered out at runtime.
+- **Cascade protection.** After `GEMINI_CIRCUIT_BREAKER_THRESHOLD` consecutive
+  failures, calls short-circuit to a `circuit_open` error envelope for
+  `GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS`.
+- **Schema invariants.** `priority_level ∈ [1,5]`, `urgency_score ∈ [0,100]`,
+  `category ∈ {Cardiac, Respiratory, Trauma, Neurological, General}`,
+  `is_critical` is always a bool, `explanation` is a non-empty list.
