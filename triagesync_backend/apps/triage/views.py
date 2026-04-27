@@ -21,4 +21,27 @@ class TriageEvaluateView(APIView):
 
         result = evaluate_triage(symptoms)
 
+        try:
+            result = evaluate_triage(symptoms)
+
+            return success_response(result)
+
+        except Exception:
+            
+            return error_response(
+                {"message": "Triage processing failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def post(self, request):
+        symptoms = request.data.get("symptoms")
+
+        if not symptoms:
+            return Response(
+                {"error": "Symptoms are required"},
+                status=400
+            )
+
+        result = evaluate_triage(symptoms)
+
         return Response(result)

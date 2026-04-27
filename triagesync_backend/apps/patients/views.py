@@ -1,3 +1,7 @@
+from apps.patients.models import PatientSubmission
+from django.db.models import Avg, Count
+from django.utils import timezone
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +13,12 @@ from apps.triage.services.triage_service import process_triage
 from apps.realtime.services.broadcast_service import broadcast_new_triage
 from triagesync_backend.apps.patients.serializers import TriageSubmissionSerializer
 
+def get_patient_queue(priority=None, status=None):
+    """
+    Fetch patients with optional filtering.
+    Always sorted by urgency_score DESC (critical first)
+    """
+    queryset = PatientSubmission.objects.all()
 
 class PatientTriageView(APIView):
     permission_classes = [IsAuthenticated]
