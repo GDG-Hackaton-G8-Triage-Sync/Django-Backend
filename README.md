@@ -2,8 +2,6 @@
 
 A Django REST API backend for a real-time medical triage system built for the GDG Hackathon. Patients submit symptoms, an AI engine prioritizes them, and medical staff see a live-updating queue via WebSocket.
 
-🚀 **Deployed Backend:** https://django-backend-4r5p.onrender.com/
-
 ---
 
 ## Tech Stack
@@ -21,42 +19,33 @@ A Django REST API backend for a real-time medical triage system built for the GD
 
 ```
 triagesync_backend/
-├── config/                          # PROJECT CONFIGURATION
-│   ├── settings.py                  # JWT, DRF, Channels, DB config
-│   ├── urls.py                      # Root routes
-│   ├── asgi.py                      # WebSocket entry (Channels)
-│   └── wsgi.py
-│
 ├── apps/
-│   ├── authentication/              # JWT auth, role-based user model
-│   ├── core/                        # Shared utils, middleware, response helpers
-│   ├── patients/                    # Patient symptom submission
-│   ├── triage/                      # AI triage logic + priority engine
-│   ├── dashboard/                   # Staff/admin dashboard APIs
-│   └── realtime/                    # WebSocket consumer + broadcast system
-│
-├── requirements.txt
-└── manage.py
+│   ├── authentication/   # JWT auth, user roles (patient/nurse/doctor/admin)
+│   ├── core/             # Shared utils, middleware, response helpers
+│   ├── patients/         # Patient symptom submission
+│   ├── triage/           # AI triage logic + priority engine
+│   ├── dashboard/        # Staff/admin dashboard APIs
+│   └── realtime/         # WebSocket consumer + broadcast system
+└── config/               # Django settings, URLs, ASGI/WSGI
 ```
-
-> ⚠️ Only use `core/response.py` for response utilities. Do NOT use `core/responses.py`.
 
 ---
 
 ## Setup
 
 ```bash
-# 1. Create and activate virtual environment
+# 1. Create virtual environment
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Create .env file and fill in values
+# 3. Create .env file
 cp .env.example .env
+# Fill in DATABASE_URL, DJANGO_SECRET_KEY, REDIS_URL
 
-# 4. Apply migrations
+# 4. Run migrations
 python manage.py migrate
 
 # 5. Start server (ASGI required for WebSocket)
@@ -90,18 +79,16 @@ daphne config.asgi:application
 
 ---
 
-## Real-Time WebSocket (Member 8 — ✅ Implemented)
+## Real-Time WebSocket (Member 8 — Implemented ✅)
 
 ### Connection
 ```
 ws://your-domain.com/ws/triage/events/
 ```
 
-This is a **server-push only** channel. Clients connect and listen — no need to send messages.
+### Event Types Broadcast to Clients
 
-### Event Types
-
-**patient_created** — fires when a new patient is triaged
+**patient_created** — fires when a new patient submission is triaged
 ```json
 {
   "type": "patient_created",
@@ -110,7 +97,7 @@ This is a **server-push only** channel. Clients connect and listen — no need t
 }
 ```
 
-**priority_update** — fires when priority is re-evaluated
+**priority_update** — fires when a patient's priority is re-evaluated
 ```json
 {
   "type": "priority_update",
@@ -119,7 +106,7 @@ This is a **server-push only** channel. Clients connect and listen — no need t
 }
 ```
 
-**critical_alert** — auto-fires when priority == 1 (urgency_score >= 80)
+**critical_alert** — auto-fires when priority == 1 (score >= 80)
 ```json
 {
   "type": "critical_alert",
@@ -137,25 +124,18 @@ This is a **server-push only** channel. Clients connect and listen — no need t
 }
 ```
 
-### Flutter Integration
-1. Connect to `ws://your-domain/ws/triage/events/`
+### How to Integrate (Flutter)
+1. Open WebSocket connection to `ws://your-domain/ws/triage/events/`
 2. Listen for incoming JSON messages
-3. Parse the `type` field to handle each event
+3. Parse `type` field to handle each event
+4. No need to send anything — this is a server-push only channel
 
-### Mock Server (test without Django)
+### Testing with Mock Server (no Django needed)
 ```bash
 pip install websockets
 python mock_ws_server.py
-# Connect Postman or Flutter to ws://localhost:8765
-```
-
-### Functions Other Members Call
-```python
-from apps.realtime.services.broadcast_service import (
-    broadcast_patient_created,   # M3 — call after saving submission
-    broadcast_priority_update,   # M6 — call after re-evaluation
-    broadcast_status_changed,    # M4 — call after status PATCH
-)
+# Connect Postman/Flutter to ws://localhost:8765
+# Receives all event types every 3 seconds
 ```
 
 ---
