@@ -2,6 +2,16 @@ from apps.patients.models import PatientSubmission
 from django.db.models import Avg, Count
 from django.utils import timezone
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+from apps.triage.models import TriageItem
+
+from apps.triage.services.ai_service import analyze_symptoms
+from apps.triage.services.triage_service import process_triage
+from apps.realtime.services.broadcast_service import broadcast_new_triage
+from triagesync_backend.apps.patients.serializers import TriageSubmissionSerializer
 
 def get_patient_queue(priority=None, status=None):
     """
@@ -10,69 +20,42 @@ def get_patient_queue(priority=None, status=None):
     """
     queryset = PatientSubmission.objects.all()
 
-    # Apply filters if provided
-    if priority:
-        queryset = queryset.filter(priority=priority)
+class PatientTriageView(APIView):
+    permission_classes = [IsAuthenticated]
 
-    if status:
-        queryset = queryset.filter(status=status)
+    def post(self, request):
+        serializer = TriageSubmissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-    # Sort: highest urgency first
-    return queryset.order_by("-urgency_score")
+        symptoms = serializer.validated_data["symptoms"]
 
+        # Create TriageItem (NEW CONTRACT MODEL)
+        submission = TriageItem.objects.create(
+            patient=request.user,
+            description=symptoms,
+            status="processing"
+        )
 
-def update_patient_status(patient_id, status):
-    """
-    Update workflow status of a patient
-    """
-    try:
-        patient = PatientSubmission.objects.get(id=patient_id)
-        patient.status = status
-        patient.save()
-        return patient
-    except PatientSubmission.DoesNotExist:
-        return None
+        # AI + Logic
+        ai_result = analyze_symptoms(symptoms)
+        triage_result = process_triage(ai_result)
 
+        # WebSocket event
+        broadcast_new_triage({
+            "type": "TRIAGE_CREATED",
+            "data": {
+                "id": submission.id,
+                "urgency_score": triage_result.get("urgency_score", 0)
+            }
+        })
 
-def get_admin_overview():
-    """
-    Aggregated system stats
-    """
-    return {
-        "total_patients": PatientSubmission.objects.count(),
-        "waiting": PatientSubmission.objects.filter(status="waiting").count(),
-        "in_progress": PatientSubmission.objects.filter(status="in_progress").count(),
-        "completed": PatientSubmission.objects.filter(status="completed").count(),
-        "critical_cases": PatientSubmission.objects.filter(priority=1).count(),
-    }
-
-
-def get_admin_analytics():
-    """
-    Optional analytics data
-    """
-    return {
-        "avg_urgency_score": PatientSubmission.objects.aggregate(
-            Avg("urgency_score")
-        )["urgency_score__avg"],
-        "common_conditions": list(
-            PatientSubmission.objects.values("condition")
-            .annotate(count=Count("condition"))
-            .order_by("-count")[:3]
-        ),
-    }
-
-def update_priority(patient, priority):
-    patient.priority = priority
-    patient.save()
-    return patient
-
-
-def verify_patient(patient, user):
-    if patient.verified_at:
-        return None
-
-    patient.verified_by = user.username
-    patient.verified_at = timezone.now()
-    patient.save()
-    return patient
+        
+        return Response({
+            "id": submission.id,
+            "description": submission.description,
+            "priority": triage_result.get("priority_level", 3),
+            "urgency_score": triage_result.get("urgency_score", 0),
+            "condition": triage_result.get("condition", "unknown"),
+            "status": submission.status,
+            "created_at": submission.created_at.isoformat()
+        })
