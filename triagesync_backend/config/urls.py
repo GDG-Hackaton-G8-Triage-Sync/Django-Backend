@@ -8,9 +8,7 @@ def health_check(request):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/v1/auth/", include("triagesync_backend.apps.authentication.urls")),
-    path("api/v1/patients/", include("triagesync_backend.apps.patients.urls")),
-    path("api/v1/dashboard/", include("triagesync_backend.apps.dashboard.urls")),
-    path("", health_check),
-]
-
+    path("api/v1/auth/", include("apps.authentication.urls")),
+    path("api/v1/patients/", include("apps.patients.urls")),
+    path("api/v1/", include("apps.dashboard.urls")),
+    ]
