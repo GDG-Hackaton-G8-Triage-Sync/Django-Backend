@@ -20,6 +20,7 @@ from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
 from apps.realtime.services.broadcast_service import broadcast_critical_alert
 from apps.realtime.services.broadcast_service import broadcast_priority_update
 
+
 # -------------------------
 # Emergency keyword override
 # -------------------------
@@ -146,8 +147,6 @@ def build_event(priority: int, urgency_score: int) -> dict:
 # -------------------------
 # Core business rules
 # -------------------------
-from .ai_service import infer_priority
-from .validation_service import validate_symptoms
 
 
 def process_triage(ai_output, current_status="PENDING"):
