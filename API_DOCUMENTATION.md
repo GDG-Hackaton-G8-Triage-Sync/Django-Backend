@@ -353,15 +353,18 @@ Get AI triage analysis without creating a submission.
 **Authentication**: None  
 **Permissions**: Public
 
+
 #### Request Body
 
 ```json
 {
   "symptoms": "Chest pain and shortness of breath",
-  "age": 45,
-  "gender": "male"
+  "age": 45,   // Optional if authenticated
+  "gender": "male" // Optional if authenticated
 }
 ```
+
+> **Note:** If the user is authenticated, the system will automatically use the patient's saved age and gender from their profile. If unauthenticated, you may provide `age` and `gender` in the request body.
 
 #### Success Response (200 OK)
 

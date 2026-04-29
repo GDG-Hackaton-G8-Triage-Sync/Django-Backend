@@ -301,7 +301,8 @@ Django-Backend/
 └── README.md                    # This file
 ```
 
-## API Documentation
+#### Demographics in AI Endpoints
+If authenticated, the system automatically uses the patient's saved age and gender for AI analysis (no need to send them in the request body). If unauthenticated, you may provide `age` and `gender` directly in the request.
 
 ### Base URLs
 
@@ -388,6 +389,7 @@ Response:
 | | `/api/v1/triage/` | POST | Patient | Submit triage request |
 | | `/api/v1/triage/ai/` | POST | No | AI analysis only |
 | | `/api/v1/triage/pdf-extract/` | POST | No | PDF symptom extraction |
+| | `/api/v1/triage/ai/` | POST | Yes/No | AI analysis (uses patient profile age/gender if authenticated) |
 | **Patient** |
 | | `/api/v1/patients/profile/` | GET | Patient | Get patient profile |
 | | `/api/v1/patients/profile/` | PATCH | Patient | Update patient profile |
