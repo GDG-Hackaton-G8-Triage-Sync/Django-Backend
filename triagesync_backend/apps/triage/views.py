@@ -54,6 +54,15 @@ class TriageAIView(APIView):
         symptoms = data.get("symptoms")
         age = data.get("age")
         gender = data.get("gender")
+        # If not provided, get from patient profile (if authenticated)
+        if not age or not gender:
+            user = request.user if request.user and request.user.is_authenticated else None
+            if user and hasattr(user, "patient_profile"):
+                patient = user.patient_profile
+                if not age and getattr(patient, "age", None) is not None:
+                    age = patient.age
+                if not gender and getattr(patient, "gender", None):
+                    gender = patient.gender
         if error:
             return Response({
                 "error": "Missing symptoms.",
@@ -175,6 +184,14 @@ class TriagePDFExtractView(APIView):
         # Build prompt and call Gemini -- carry demographics from the multipart form if present
         pdf_age = normalize_age(request.data.get("age"))
         pdf_gender = normalize_gender(request.data.get("gender"))
+        # If not provided, get from patient profile (if authenticated)
+        user = request.user if request.user and request.user.is_authenticated else None
+        if user and hasattr(user, "patient_profile"):
+            patient = user.patient_profile
+            if not pdf_age and getattr(patient, "age", None) is not None:
+                pdf_age = patient.age
+            if not pdf_gender and getattr(patient, "gender", None):
+                pdf_gender = patient.gender
         prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender)
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
