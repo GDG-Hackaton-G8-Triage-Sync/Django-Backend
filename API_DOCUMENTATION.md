@@ -63,19 +63,35 @@ Create a new user account.
 
 ```json
 {
-  "username": "john_doe",
+  "name": "john doe",
   "email": "john@example.com",
   "password": "SecurePassword123!",
-  "role": "patient"
+  "role": "patient",
+  "gender": "male",
+  "age": 36,
+  "blood_type": "O+",
+  "health_history": "No chronic conditions",
+  "allergies": "penicillin",
+  "current_medications": "none",
+  "bad_habits": "smoking"
 }
 ```
 
+> **Note:** For patient registration the following fields must be present: `name`, `email`, `password`, `role`, and `age`. Other patient profile fields (`gender`, `blood_type`, `health_history`, `allergies`, `current_medications`, `bad_habits`) are optional but may be provided at registration and will be saved to the patient profile.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `username` | string | Yes | Unique username (3-150 chars) |
+| `name` | string | Yes | Patient full name (mapped to username) |
 | `email` | string | Yes | Valid email address |
 | `password` | string | Yes | Password (min 8 chars) |
 | `role` | string | Yes | One of: `patient`, `nurse`, `doctor`, `admin` |
+| `age` | integer | Yes | Age in years |
+| `gender` | string | No | Patient gender (optional) |
+| `blood_type` | string | No | Blood type (optional) |
+| `health_history` | string | No | Free-text health history (optional) |
+| `allergies` | string | No | Known allergies (optional) |
+| `current_medications` | string | No | Current medications (optional) |
+| `bad_habits` | string | No | Smoking, alcohol etc. (optional) |
 
 #### Success Response (201 Created)
 

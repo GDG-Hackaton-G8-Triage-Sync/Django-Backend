@@ -1,3 +1,5 @@
+#### Demographics in Registration
+Registration accepts patient demographic and profile fields at signup. The following fields must be provided for patients: `name`, `email`, `password`, `role`, and `age`. Optional profile fields that can be included at registration and will be saved to the patient profile: `gender`, `blood_type`, `health_history`, `allergies`, `current_medications`, `bad_habits`.
 # TriageSync - Intelligent Medical Triage System
 
 [![Python](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)

@@ -18,10 +18,20 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
 
         if not serializer.is_valid():
+            # If patient role, highlight missing demographic fields
+            missing_fields = []
+            if request.data.get('role') == 'patient':
+                # Required at registration for patient role
+                for field in ['name', 'email', 'password', 'role', 'age']:
+                    if not request.data.get(field) and request.data.get(field) != 0:
+                        missing_fields.append(field)
+            details = serializer.errors
+            if missing_fields:
+                details['demographics'] = f"Missing required demographic fields: {', '.join(missing_fields)}"
             return error_response(
                 code="VALIDATION_ERROR",
                 message="Invalid registration data",
-                details=serializer.errors,
+                details=details,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
