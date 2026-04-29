@@ -234,3 +234,98 @@ class TriageEvaluateView(APIView):
                 "details": str(e)
             }, status=status.HTTP_502_BAD_GATEWAY)
         return Response(result)
+
+
+# ============================================================================
+# MAIN TRIAGE SUBMISSION ENDPOINT (API Contract Compliant)
+# POST /api/v1/triage/
+# ============================================================================
+
+class TriageSubmissionView(APIView):
+    """
+    Main triage submission endpoint per API contract.
+    
+    POST /api/v1/triage/
+    Request: {"description": "Chest pain..."}
+    Response: Direct TriageItem shape (no envelope)
+    """
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def post(self, request):
+        # Get description from request (API contract field name)
+        description = request.data.get("description")
+        photo_name = request.data.get("photo_name")
+
+        # Validate input
+        if not description:
+            return Response({
+                "code": "VALIDATION_ERROR",
+                "message": "Description is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(description.strip()) > MAX_INPUT_LENGTH:
+            return Response({
+                "code": "VALIDATION_ERROR",
+                "message": f"Description cannot exceed {MAX_INPUT_LENGTH} characters"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Get or create Patient profile for user
+            patient, _ = Patient.objects.get_or_create(
+                user=request.user,
+                defaults={'name': request.user.username}
+            )
+
+            # Call Member 6's triage service (complete logic)
+            triage_result = evaluate_triage(description)
+
+            # Extract data from Member 6's response format
+            triage_data = triage_result.get("data", {}).get("triage_result", {})
+            priority = triage_data.get("priority", 3)
+            urgency_score = triage_data.get("urgency_score", 50)
+            condition = triage_data.get("condition", "Unknown")
+            triage_status = triage_data.get("status", "waiting")
+
+            # Save to database (Member 7's model)
+            submission = PatientSubmission.objects.create(
+                patient=patient,
+                symptoms=description,  # Store in symptoms field
+                photo_name=photo_name,
+                priority=priority,
+                urgency_score=urgency_score,
+                condition=condition,
+                status=triage_status
+            )
+
+            # Broadcast WebSocket event (Member 8)
+            broadcast_triage_event({
+                "type": "TRIAGE_CREATED",
+                "timestamp": submission.created_at.isoformat(),
+                "data": {
+                    "id": submission.id,
+                    "priority": priority,
+                    "urgency_score": urgency_score,
+                    "condition": condition,
+                    "status": triage_status
+                }
+            })
+
+            # Return direct TriageItem shape (no envelope per API contract)
+            return Response({
+                "id": submission.id,
+                "description": description,
+                "priority": priority,
+                "urgency_score": urgency_score,
+                "condition": condition,
+                "status": triage_status,
+                "photo_name": photo_name,
+                "created_at": submission.created_at.isoformat()
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger = logging.getLogger("triage.submission")
+            logger.error(f"Triage submission failed: {str(e)}")
+            return Response({
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "Triage processing failed"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
