@@ -1,43 +1,212 @@
-from rest_framework.views import APIView
+﻿from rest_framework.views import APIView
 from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework_simplejwt.views import TokenRefreshView
+from django.db import transaction
 
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer
 from .services.auth_service import get_tokens_for_user
-from apps.core.response import success_response, error_response
+from triagesync_backend.apps.core.response import error_response
+from triagesync_backend.apps.patients.models import Patient
 
 
 class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
         if not serializer.is_valid():
             return error_response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
+                code="VALIDATION_ERROR",
+                message="Invalid registration data",
+                details=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         user = serializer.save()
         tokens = get_tokens_for_user(user)
 
-        return success_response({
-            "user": serializer.data,
-            "tokens": tokens
-        })
+        # Return direct flat structure per API contract Section 2.1
+        return Response({
+            "access_token": tokens['access'],
+            "refresh_token": tokens['refresh'],
+            "role": user.role,
+            "user_id": user.id,
+            "name": user.username,
+            "email": user.email
+        }, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
+    permission_classes = [AllowAny]
+    
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
 
         if not serializer.is_valid():
             return error_response(
-                {"message": "Invalid username or password"},
-                status=status.HTTP_401_UNAUTHORIZED
+                code="AUTHENTICATION_FAILED",
+                message="Invalid username or password",
+                status_code=status.HTTP_401_UNAUTHORIZED
             )
 
         user = serializer.validated_data
         tokens = get_tokens_for_user(user)
 
-        return success_response({
-            "tokens": tokens
+        # Return direct flat structure per API contract
+        return Response({
+            "access_token": tokens['access'],
+            "refresh_token": tokens['refresh'],
+            "role": user.role,
+            "user_id": user.id,
+            "name": user.username,
+            "email": user.email
         })
+
+
+class RefreshTokenView(TokenRefreshView):
+    """
+    POST /api/v1/auth/refresh/
+    Accepts refresh_token and returns new access_token
+    """
+    permission_classes = [AllowAny]
+
+
+class GenericProfileView(APIView):
+    """
+    Generic profile management endpoint for all user roles.
+    
+    GET /api/v1/profile/
+    - For patients: Returns Patient model fields
+    - For staff: Returns User model fields
+    
+    PATCH /api/v1/profile/
+    - For patients: Updates Patient model fields
+    - For staff: Updates User model fields (name, email only)
+    
+    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 9.1, 9.4, 2.1, 2.3, 2.5
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Retrieve user profile based on role."""
+        user = request.user
+        
+        try:
+            if user.role == 'patient':
+                # Return Patient model for patients
+                patient = Patient.objects.get(user=user)
+                
+                return Response({
+                    'id': patient.id,
+                    'name': patient.name,
+                    'email': user.email,
+                    'role': user.role,
+                    'date_of_birth': patient.date_of_birth,
+                    'contact_info': patient.contact_info,
+                    'gender': patient.gender,
+                    'age': patient.age,
+                    'blood_type': patient.blood_type,
+                    'health_history': patient.health_history,
+                    'allergies': patient.allergies,
+                    'current_medications': patient.current_medications,
+                    'bad_habits': patient.bad_habits,
+                }, status=status.HTTP_200_OK)
+            else:
+                # Return User model for staff
+                return Response({
+                    'id': user.id,
+                    'name': user.first_name,
+                    'email': user.email,
+                    'role': 'staff',  # Normalize nurse/doctor to 'staff'
+                    'username': user.username,
+                }, status=status.HTTP_200_OK)
+                
+        except Patient.DoesNotExist:
+            return error_response(
+                code="NOT_FOUND",
+                message="Patient profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def patch(self, request):
+        """Update user profile based on role."""
+        serializer = GenericProfileSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return error_response(
+                code="VALIDATION_ERROR",
+                message="Invalid input data",
+                details=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        validated_data = serializer.validated_data
+        user = request.user
+        
+        try:
+            with transaction.atomic():
+                if user.role == 'patient':
+                    # Update Patient model for patients
+                    patient = Patient.objects.select_for_update().get(user=user)
+                    
+                    # Update all provided fields
+                    for field, value in validated_data.items():
+                        setattr(patient, field, value)
+                    
+                    patient.save()
+                    
+                    # Return updated profile
+                    return Response({
+                        'id': patient.id,
+                        'name': patient.name,
+                        'email': user.email,
+                        'role': user.role,
+                        'date_of_birth': patient.date_of_birth,
+                        'contact_info': patient.contact_info,
+                        'gender': patient.gender,
+                        'age': patient.age,
+                        'blood_type': patient.blood_type,
+                        'health_history': patient.health_history,
+                        'allergies': patient.allergies,
+                        'current_medications': patient.current_medications,
+                        'bad_habits': patient.bad_habits,
+                    }, status=status.HTTP_200_OK)
+                else:
+                    # Update User model for staff (name, email only)
+                    if 'name' in validated_data:
+                        user.first_name = validated_data['name']
+                    if 'email' in validated_data:
+                        user.email = validated_data['email']
+                    
+                    user.save()
+                    
+                    # Return updated profile
+                    return Response({
+                        'id': user.id,
+                        'name': user.first_name,
+                        'email': user.email,
+                        'role': user.role,
+                        'username': user.username,
+                    }, status=status.HTTP_200_OK)
+                    
+        except Patient.DoesNotExist:
+            return error_response(
+                code="NOT_FOUND",
+                message="Patient profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

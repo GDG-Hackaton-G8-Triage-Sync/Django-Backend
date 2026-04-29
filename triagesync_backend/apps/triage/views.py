@@ -10,8 +10,9 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 import logging
+from django.core.exceptions import ValidationError
 
 from .serializers import TriageAIResponseSerializer
 from .services.prompt_engine import build_pdf_triage_prompt
@@ -24,9 +25,14 @@ from .services.ai_service import (
 from PyPDF2 import PdfReader
 
 from .services.triage_service import evaluate_triage
-from .serializers import TriageInputSerializer
-from apps.authentication.permissions import IsDoctor
-from apps.core.response import success_response, error_response
+# from .serializers import TriageInputSerializer  # Removed: does not exist
+from triagesync_backend.apps.authentication.permissions import IsDoctor, IsPatient
+from triagesync_backend.apps.core.response import success_response, error_response
+from triagesync_backend.apps.core.validators import validate_description_length
+
+# Required imports for TriageSubmissionView
+from triagesync_backend.apps.patients.models import PatientSubmission, Patient
+from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_patient_created
 
 MAX_INPUT_LENGTH = 500
 
@@ -98,6 +104,7 @@ class TriageAIView(APIView):
             response_data["source"] = "ai"
             if warning:
                 response_data["warning"] = warning
+            # Return flat structure (no envelope)
             return Response(response_data)
 
         logger = logging.getLogger("triage.ai")
@@ -201,6 +208,7 @@ class TriagePDFExtractView(APIView):
         if serializer.is_valid():
             response_data = dict(serializer.data)
             response_data["source"] = "ai"
+            # Return flat structure (no envelope)
             return Response(response_data)
 
         logger.warning("AI response validation failed. errors=%s", serializer.errors)
@@ -233,6 +241,10 @@ class TriageEvaluateView(APIView):
                 "message": "We are unable to process your request at this time. Please try again later.",
                 "details": str(e)
             }, status=status.HTTP_502_BAD_GATEWAY)
+        # Flatten envelope if present
+        if isinstance(result, dict) and "data" in result and "triage_result" in result["data"]:
+            flat_result = result["data"]["triage_result"]
+            return Response(flat_result)
         return Response(result)
 
 
@@ -252,32 +264,49 @@ class TriageSubmissionView(APIView):
     permission_classes = [IsAuthenticated, IsPatient]
 
     def post(self, request):
+        logger = logging.getLogger("triage.submission")
+        
         # Get description from request (API contract field name)
         description = request.data.get("description")
         photo_name = request.data.get("photo_name")
 
-        # Validate input
+        # Log triage submission attempt
+        logger.info(f"Triage submission from user {request.user.id}")
+
+        # Validate input using centralized validator
         if not description:
             return Response({
                 "code": "VALIDATION_ERROR",
                 "message": "Description is required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if len(description.strip()) > MAX_INPUT_LENGTH:
+        try:
+            validate_description_length(description)
+        except ValidationError as e:
             return Response({
                 "code": "VALIDATION_ERROR",
-                "message": f"Description cannot exceed {MAX_INPUT_LENGTH} characters"
+                "message": str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # Get or create Patient profile for user
-            patient, _ = Patient.objects.get_or_create(
-                user=request.user,
-                defaults={'name': request.user.username}
-            )
+            try:
+                patient = request.user.patient_profile
+            except Patient.DoesNotExist:
+                patient = Patient.objects.create(
+                    user=request.user,
+                    name=request.user.username
+                )
 
             # Call Member 6's triage service (complete logic)
-            triage_result = evaluate_triage(description)
+            try:
+                triage_result = evaluate_triage(description)
+            except Exception as triage_error:
+                logger.error(f"Triage evaluation failed for user {request.user.id}: {str(triage_error)}")
+                return Response({
+                    "code": "TRIAGE_ERROR",
+                    "message": "Triage evaluation failed. Please try again later."
+                }, status=status.HTTP_502_BAD_GATEWAY)
 
             # Extract data from Member 6's response format
             triage_data = triage_result.get("data", {}).get("triage_result", {})
@@ -297,23 +326,16 @@ class TriageSubmissionView(APIView):
                 status=triage_status
             )
 
-            # Broadcast WebSocket event (Member 8)
-            broadcast_triage_event({
-                "type": "TRIAGE_CREATED",
-                "timestamp": submission.created_at.isoformat(),
-                "data": {
-                    "id": submission.id,
-                    "priority": priority,
-                    "urgency_score": urgency_score,
-                    "condition": condition,
-                    "status": triage_status
-                }
-            })
+            # Broadcast WebSocket event (Member 8) - using correct function
+            broadcast_patient_created(submission.id, priority, urgency_score)
+
+            # Log successful submission
+            logger.info(f"Triage submission {submission.id} created with priority {priority}")
 
             # Return direct TriageItem shape (no envelope per API contract)
             return Response({
                 "id": submission.id,
-                "description": description,
+                "description": description,  # API field name
                 "priority": priority,
                 "urgency_score": urgency_score,
                 "condition": condition,
@@ -323,7 +345,6 @@ class TriageSubmissionView(APIView):
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger = logging.getLogger("triage.submission")
             logger.error(f"Triage submission failed: {str(e)}")
             return Response({
                 "code": "INTERNAL_SERVER_ERROR",

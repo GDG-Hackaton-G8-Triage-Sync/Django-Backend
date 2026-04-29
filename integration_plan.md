@@ -1,386 +1,867 @@
-# TriageSync — Integration Plan
+# 🚀 Comprehensive Integration & Refactoring Plan
 
-A member-by-member integration map. Each member section has **two parts**:
-
-- **What I Provide** — the outputs / functions / data shapes that other members consume.
-- **What I Need** — the inputs / functions / guarantees this member depends on others for.
-
-The same handshake appears in two members' sections, written from each side. Reading either side gives a complete view of that integration point.
+**Date:** 2026-04-28  
+**Branch:** feature/AI_service  
+**Status:** Ready for Implementation
 
 ---
 
-## How to read this document
+## 📊 Situation Analysis
 
-Every integration point in the system is a contract between two members. A contract has:
+After reviewing both the **Integration Review** and **Folder Audit Report**, here's the consolidated picture:
 
-- A **producer** (the member who exposes a function, emits an event, or writes a row).
-- A **consumer** (the member who calls the function, listens for the event, or reads the row).
+### Issues Found:
+- **Integration Issues:** 25
+- **Architectural Issues:** 38
+- **Total Unique Issues:** 45 (some overlap)
 
-If a contract changes, **both sides update simultaneously**. The producer cannot rename a field without the consumer knowing. The consumer cannot start expecting a new field without the producer agreeing to emit it.
+### Severity Breakdown:
+- 🔴 **Critical (Must Fix):** 15 issues
+- 🟡 **High Priority:** 18 issues
+- 🟢 **Medium Priority:** 12 issues
 
-Use this document to:
-1. Find which other members you must coordinate with before changing your code.
-2. Find every input you can rely on and every output you must produce.
-3. Resolve disputes — if your code breaks, walk the contract and confirm both sides are honoring it.
+### Root Causes:
+1. **Lack of Integration Testing** - Members built in isolation
+2. **No Architectural Review** - Code placed in wrong apps
+3. **API Contract Not Enforced** - Response formats don't match
+4. **Incomplete Task Handoffs** - Member 3 calls Member 6's non-existent functions
 
 ---
 
-## Locked system flow
+## 🎯 Strategic Approach
 
+### Philosophy:
+**"Fix the foundation first, then build up"**
+
+We'll fix issues in this order:
+1. **Architectural** (move files to correct locations)
+2. **Integration** (connect the pieces)
+3. **Contract Compliance** (match API contract)
+4. **Polish** (performance, logging, etc.)
+
+---
+
+## 📋 Phase 1: Architectural Fixes (2-3 hours)
+
+**Goal:** Put code in the right places according to task classification
+
+### 1.1 Move Triage Submission Endpoint ⚡ CRITICAL
+
+**Problem:** Main triage endpoint is in `patients/` app, should be in `triage/`
+
+**Actions:**
+```bash
+# 1. Create new proper triage submission view in triage/views.py
+# 2. Delete PatientTriageView from patients/views.py
+# 3. Update triage/urls.py to mount at correct path
+# 4. Update patients/urls.py to remove triage routes
 ```
-                 (auth)            (auth)
-   Patient ──► M2 ──► M3 ─────────► M6 ──► M5 (AI)
-                       │             │      │
-                       │             ▼      ▼
-                       │            M7 ◄── normalized dict
-                       │            (DB)
-                       ▼             │
-                      M8 ──── case.triaged event
-                       │             │
-                       └─────────────┴──────► Staff browser
-                                              │
-                                              ▼
-                                       M4 (REST refresh)
-                                              │
-                                              ▼
-                                            M7 (read)
+
+**New Structure:**
+```python
+# triage/views.py
+class TriageSubmissionView(APIView):
+    """POST /api/v1/triage/ - Main triage submission endpoint"""
+    permission_classes = [IsAuthenticated, IsPatient]
+    
+    def post(self, request):
+        # 1. Validate input
+        # 2. Call Member 6's evaluate_triage()
+        # 3. Save to PatientSubmission
+        # 4. Broadcast event
+        # 5. Return direct TriageItem shape
+        pass
+
+# triage/urls.py
+urlpatterns = [
+    path("", TriageSubmissionView.as_view(), name='triage-submit'),  # ✅ /api/v1/triage/
+    path('ai/', TriageAIView.as_view(), name='triage-ai'),
+    path('pdf-extract/', TriagePDFExtractView.as_view(), name='triage-pdf-extract'),
+]
 ```
 
-Cross-cutting (touch every step): **M1** (response/exception envelope) and **M2** (permissions on every endpoint).
+**Impact:** Fixes 5 issues (#3, #8, #9, #10, #11 from reports)
 
 ---
 
-## Member 1 — Core Backend & Shared Infrastructure
+### 1.2 Move Middleware to Core ⚡ CRITICAL
 
-**Module:** `apps/core/`
-**Status:** Partial — `constants.py`, `exceptions.py`, `response.py`, `middleware.py`, `payload_sanitizer.py` exist.
+**Problem:** `triage/middleware.py` is request sanitization, should be in `core/`
 
-### What I Provide
+**Actions:**
+```bash
+# 1. Move file
+mv triagesync_backend/apps/triage/middleware.py \
+   triagesync_backend/apps/core/middleware/payload_sanitizer.py
 
-- **To everyone — `apps.core.response.ApiResponse(data, status, ...)`**
-  Standard success/error envelope wrapper. Every view should return through this so the frontend sees a consistent shape.
-- **To everyone — global exception handler**
-  Maps unhandled exceptions to JSON envelopes with HTTP status codes. Configured in `settings.REST_FRAMEWORK["EXCEPTION_HANDLER"]`.
-- **To M3, M5 — `PayloadSanitizerMiddleware`** (registered in `settings.MIDDLEWARE`)
-  Strips PII from inbound JSON on `/api/v1/triage/*`. Whitelist: `age`, `gender`, `symptoms`. Attaches `request._triage_warning` if age/gender missing.
-- **To everyone — shared validators / utilities**
-  Length checks, required-field validators, request-ID generator (`apps.core.utils.generate_request_id`).
+# 2. Update imports in settings.py
+# 3. Update any references
+```
 
-### What I Need
+**Rationale:**
+- Task Classification: Member 1 (Core) owns "Shared validators"
+- Middleware that runs on ALL requests belongs in `core/`
+- Not triage-specific logic
 
-- **From everyone** — agree to wrap their `Response(...)` calls in `ApiResponse(...)` rather than returning raw DRF responses.
-- **From M2** — confirmation that exception messages don't leak auth details (M1's handler must mask sensitive fields).
-- **From M8** — agreement on which exception classes to broadcast as system events (e.g., circuit breaker opens).
-
----
-
-## Member 2 — Authentication & Security
-
-**Module:** `apps/authentication/`
-**Status:** Models scaffolded — `User` with role choices (`patient`, `nurse`, `doctor`, `admin`).
-
-### What I Provide
-
-- **To M3, M4, M5 (views), M8 (WebSocket)** — `IsAuthenticated` + role-based permission classes.
-  Concrete classes: `IsPatient`, `IsStaff` (nurse/doctor), `IsAdmin`.
-- **To everyone** — `request.user` populated on every authenticated request (a `User` model instance with `.role`).
-- **To M3** — JWT token issuance: `POST /api/v1/auth/login/`, `POST /api/v1/auth/refresh/`.
-- **To M8** — WebSocket auth middleware (validates JWT on connect, rejects anonymous sockets).
-
-### What I Need
-
-- **From M7** — the `User` model's role field and any FK relationships (e.g., `User → cases`).
-- **From M3, M4, M5** — declaration of which permission class each endpoint uses. Default is `IsAuthenticated` but must be tightened per role.
-- **From M8** — the WebSocket connection scope so the auth middleware can attach the user to the channel.
+**Impact:** Fixes issue #18
 
 ---
 
-## Member 3 — Patient API (Input Layer)
+### 1.3 Delete Duplicate Files ⚡ CRITICAL
 
-**Module:** `apps/patients/`
-**Status:** Mock — `PatientSubmission` model + mock status responses.
+**Problem:** `triage/url.py` and `triage/urls.py` both exist
 
-### What I Provide
+**Actions:**
+```bash
+# Delete the old one
+rm triagesync_backend/apps/triage/url.py
+```
 
-- **To patients (HTTP clients)** — `POST /api/v1/triage/` accepting `{symptoms, age?, gender?}`.
-  Validates input (≤ 500 chars), creates a session, and starts the pipeline.
-- **To M6** — calls `evaluate_triage(symptoms, age, gender)` and persists nothing itself; M6 owns the write.
-- **To M8** — emits `case.submitted` event via `broadcast_service.emit("case.submitted", payload)` immediately after a valid submission.
-- **To M7** — passes the authenticated `request.user` into the M6 call so the patient FK can be set on the resulting `TriageResult` row.
-- **To M4** — optional patient-history endpoint: `GET /api/v1/patients/me/history/` returning the caller's past triage results.
-
-### What I Need
-
-- **From M2** — `IsPatient` permission class on `POST /api/v1/triage/`. Without it, anonymous traffic reaches Gemini and burns quota.
-- **From M1** — `ApiResponse` envelope so the frontend gets a uniform `{data, error, request_id}` shape.
-- **From M1 (`PayloadSanitizerMiddleware`)** — already strips disallowed keys before the view runs; M3 must not re-add them.
-- **From M5 (indirect, via M6)** — guarantee that `evaluate_triage` always returns a dict, never raises. M3's view must not have try/except around the AI call.
-- **From M6** — the exact return shape of `evaluate_triage` so M3's serializer can validate it before responding.
-- **From M7** — the `User` model and the migration that lets M6 store a `patient` FK.
-- **From M8** — the `broadcast_service.emit` signature and the agreed event name `case.submitted` with its payload schema.
+**Impact:** Fixes issue #17
 
 ---
 
-## Member 4 — Dashboard API (Output Layer)
+### 1.4 Fix Core Response Helpers ⚡ CRITICAL
 
-**Module:** `apps/dashboard/`
-**Status:** Mock — hardcoded counts and status updates.
+**Problem:** `core/response.py` creates envelopes, violating API contract
 
-### What I Provide
+**Decision Point:** Two options:
 
-- **To staff browser** — `GET /api/v1/dashboard/staff/queue/` returning a paginated list of active triage cases ordered by `(is_critical DESC, priority_level ASC, created_at ASC)`.
-- **To staff browser** — `GET /api/v1/dashboard/staff/patient/{session_id}/` returning a single case with full triage detail.
-- **To staff browser** — `POST /api/v1/dashboard/staff/patient/{session_id}/override/` for manual priority/status overrides (delegates to M6).
-- **To admin browser** — `GET /api/v1/dashboard/admin/overview/` with aggregate stats (counts by priority, average urgency, daily volume).
-- **To M8** — payload schema for live updates. M4 defines the JSON shape that `case.triaged` / `case.status_changed` events should carry, so the frontend can reuse the same renderer for REST and WebSocket data.
+**Option A: Remove Envelopes (Recommended)**
+```python
+# core/response.py
+def success_response(data, status_code=200):
+    """Return direct data, no envelope"""
+    return Response(data, status=status_code)
 
-### What I Need
+def error_response(code, message, details=None, status_code=400):
+    """Return {code, message, details} format"""
+    response_data = {"code": code, "message": message}
+    if details:
+        response_data["details"] = details
+    return Response(response_data, status=status_code)
+```
 
-- **From M2** — `IsStaff` permission on staff endpoints, `IsAdmin` on admin endpoints.
-- **From M7** — `TriageResult` model with the full set of fields (status, assigned_to, resolved_at) and a query manager method like `TriageResult.objects.active_queue()`.
-- **From M6** — the override entry point: `triage_service.override_case(session_id, actor, **changes)` which validates the transition and emits the event.
-- **From M8** — the event names and payload contract so M4's WebSocket-side renderer matches its REST-side renderer.
-- **From M1** — `ApiResponse` envelope.
+**Option B: Create New Helpers, Deprecate Old**
+```python
+# core/response.py
 
----
+# NEW - Contract compliant
+def direct_response(data, status_code=200):
+    return Response(data, status=status_code)
 
-## Member 5 — AI Service Layer  *(this member)*
+def contract_error(code, message, details=None, status_code=400):
+    return Response({"code": code, "message": message, "details": details}, status=status_code)
 
-**Module:** `apps/triage/services/ai_service.py`, `apps/triage/services/prompt_engine.py`
-**Status:** Production-ready. Multi-model cascade, thread-safe circuit breaker, JSON-mode parsing, retry-skip on deterministic errors, prompt-injection hardening.
+# OLD - Deprecated (for backward compatibility)
+def success_response(...):  # Keep for now, mark deprecated
+    pass
+```
 
-### What I Provide
+**Recommendation:** Option A - Clean break, fix all usages
 
-- **To M6 — `get_triage_recommendation(symptoms, age=None, gender=None, model_name=None) -> dict`**
-  Always returns a dict, never raises. Two shapes:
-
-  **Success:**
-  ```python
-  {
-    "priority_level": int,        # 1..5, clamped
-    "urgency_score":  int,        # 0..100, clamped
-    "condition":      str,
-    "category":       str,        # one of: Cardiac, Respiratory, Trauma, Neurological, General
-    "is_critical":    bool,
-    "explanation":    list[str],
-    "recommended_action": str,
-    "reason":         str,
-  }
-  ```
-
-  **Failure:**
-  ```python
-  {
-    "error": "AI unavailable, staff review required",
-    "user_description": str,
-    "details":     list[str],
-    "error_types": list[str],     # e.g. ["quota", "timeout", "circuit_open"]
-  }
-  ```
-
-- **To M3 (indirectly) — `POST /api/v1/triage/pdf-extract/`**
-  Accepts a PDF upload, returns extracted text for re-submission as `symptoms`.
-- **To M6 — `normalize_ai_response(data) -> dict`**
-  Schema hygiene only (clamps, enum coercion, type coercion). **Does not** apply priority↔critical coupling — that is M6's policy layer.
-- **To M1 / M8** — circuit-breaker state and structured error envelopes that can be surfaced as system events.
-
-### What I Need
-
-- **From M3** — calls routed through M6, not directly to me. M3 must not call `get_triage_recommendation` itself.
-- **From M6** — re-application of the priority↔critical coupling rules I deliberately removed (L1 ⇒ critical, critical ⇒ priority ≤ 2, plus any future hospital-specific rules).
-- **From M6** — fallback orchestration. When my dict has `"error"`, M6 decides whether to substitute a rule-based answer or surface the failure.
-- **From M1** — `PayloadSanitizerMiddleware` registered upstream so my prompts only ever see whitelisted fields.
-- **From M2** — permission gate on `/api/v1/triage/ai/` and `/pdf-extract/`. Confirm whether these are patient-callable or staff-only.
-- **From config (M1 / DevOps)** — `GEMINI_API_KEY` and `GEMINI_MODEL_PRIORITY` env vars present at boot.
+**Impact:** Fixes issues #1, #2, #6, #34, #35
 
 ---
 
-## Member 6 — Triage Logic & Business Rules
+## 📋 Phase 2: Integration Fixes (3-4 hours)
 
-**Module:** `apps/triage/services/triage_service.py`, `apps/triage/services/validation_service.py`
-**Status:** Scaffold only — 26 lines wrapping M5's output, no policy applied yet.
+**Goal:** Connect Member 3 → Member 6 → Member 8 properly
 
-### What I Provide
+### 2.1 Create Proper Triage Submission Flow ⚡ CRITICAL
 
-- **To M3, M4 — `evaluate_triage(symptoms, age=None, gender=None, *, patient=None) -> dict`**
-  Single entry point for the full triage pipeline. Internally:
-  1. Calls M5's `get_triage_recommendation(...)`.
-  2. On success: applies priority↔critical coupling and any hospital policy rules.
-  3. On error: applies fallback substitution (rule-based answer) or re-raises as an envelope.
-  4. Persists via M7 (`TriageResult.objects.create(...)`).
-  5. Emits the appropriate M8 event (`case.triaged` or `case.escalated`).
-  Returns the persisted dict (with `session_id`, `status`, `created_at`).
-- **To M4 — `override_case(session_id, actor, **changes) -> dict`**
-  Validates a status / priority transition, writes the change, emits `case.status_changed`.
-- **To M4 / M7 — status state machine.**
-  Defines the legal transitions (e.g., `queued → in_review → resolved`, `queued → escalated`) and the `Status` enum stored in `apps/core/constants.py`.
-- **To M8** — emits `case.triaged`, `case.escalated`, `case.status_changed` events with payloads agreed with M4.
-- **To M5** — nothing direct; M6 is a pure consumer of M5's output.
+**File:** `triage/views.py` - New `TriageSubmissionView`
 
-### What I Need
+**Implementation:**
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
-- **From M5** — `get_triage_recommendation(...)` always returning a dict with the documented success or error shape.
-- **From M5** — `normalize_ai_response(...)` already applied (clamps + enum coercion + bool coercion done before I see the dict).
-- **From M7** — extended `TriageResult` model with `patient` FK, `status`, `assigned_to`, `resolved_at`, `urgency_score`, `category`, `is_critical`, `recommended_action`, `reason`, and `explanation` as `JSONField`.
-- **From M7** — query helpers: `TriageResult.objects.active_queue()`, `TriageResult.objects.for_patient(user)`.
-- **From M3** — calls routed exclusively through `evaluate_triage(...)`. M3 must not call M5 directly.
-- **From M4** — agreement on the override payload schema (`{priority_level?, status?, assigned_to?, reason}`).
-- **From M8** — `broadcast_service.emit(event_type, payload)` available and idempotent.
-- **From M1** — `ApiResponse` envelope and a typed exception class for "transition not allowed" errors.
-- **From M2** — `actor` (the staff user) is guaranteed authenticated and authorized before reaching `override_case`.
+from apps.authentication.permissions import IsPatient
+from apps.patients.models import Patient, PatientSubmission
+from apps.triage.services.triage_service import evaluate_triage
+from apps.realtime.services.broadcast_service import broadcast_patient_created
 
----
 
-## Member 7 — Data Layer (Models & Queries)
+class TriageSubmissionView(APIView):
+    """
+    POST /api/v1/triage/
+    Main triage submission endpoint (Member 3 + Member 6 + Member 8 integration)
+    """
+    permission_classes = [IsAuthenticated, IsPatient]
 
-**Module:** `apps/patients/models.py`, `apps/triage/models.py`, `apps/authentication/models.py`
-**Status:** Minimal — `TriageResult` has only `priority`, `explanation`, `created_at`; no status field, no patient FK.
+    def post(self, request):
+        # 1. Get description from request (API contract field name)
+        description = request.data.get("description")
+        photo_name = request.data.get("photo_name")
+        
+        if not description:
+            return Response({
+                "code": "VALIDATION_ERROR",
+                "message": "Description is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 2. Validate length (500 chars max)
+        if len(description) > 500:
+            return Response({
+                "code": "VALIDATION_ERROR",
+                "message": "Description cannot exceed 500 characters"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 3. Get or create Patient profile
+        try:
+            patient = request.user.patient_profile
+        except Patient.DoesNotExist:
+            patient = Patient.objects.create(
+                user=request.user,
+                name=request.user.username
+            )
+        
+        # 4. Call Member 6's triage service
+        triage_result = evaluate_triage(description)
+        
+        # Extract data from Member 6's response
+        triage_data = triage_result["data"]["triage_result"]
+        priority = triage_data["priority"]
+        urgency_score = triage_data["urgency_score"]
+        condition = triage_data["condition"]
+        status_value = triage_data["status"]
+        
+        # 5. Save to database (Member 7's model)
+        submission = PatientSubmission.objects.create(
+            patient=patient,
+            symptoms=description,  # Model field is still "symptoms"
+            photo_name=photo_name,
+            priority=priority,
+            urgency_score=urgency_score,
+            condition=condition,
+            status=status_value
+        )
+        
+        # 6. Broadcast WebSocket event (Member 8)
+        broadcast_patient_created(
+            patient_id=submission.id,
+            priority=priority,
+            urgency_score=urgency_score
+        )
+        
+        # 7. Return direct TriageItem shape (no envelope)
+        return Response({
+            "id": submission.id,
+            "description": description,  # API contract field name
+            "priority": priority,
+            "urgency_score": urgency_score,
+            "condition": condition,
+            "status": status_value,
+            "created_at": submission.created_at.isoformat()
+        }, status=status.HTTP_201_CREATED)
+```
 
-### What I Provide
-
-- **To M2 — `User` model** with `role` (`patient`, `nurse`, `doctor`, `admin`) and any related fields M2 needs for permission checks.
-- **To M3 — `PatientSubmission` model** (or equivalent) for storing raw inbound submissions.
-- **To M6 — extended `TriageResult` model** with the full schema:
-  ```python
-  class TriageResult(models.Model):
-      patient            = ForeignKey(User, on_delete=CASCADE, related_name="triage_results")
-      session_id         = UUIDField(default=uuid4, unique=True)
-      symptoms           = TextField()
-      priority_level     = IntegerField()
-      urgency_score      = IntegerField()
-      category           = CharField(max_length=32, choices=CATEGORY_CHOICES)
-      is_critical        = BooleanField(default=False)
-      explanation        = JSONField(default=list)
-      recommended_action = TextField()
-      reason             = TextField()
-      status             = CharField(max_length=24, choices=STATUS_CHOICES, default="queued")
-      assigned_to        = ForeignKey(User, null=True, blank=True, related_name="assigned_cases")
-      created_at         = DateTimeField(auto_now_add=True)
-      updated_at         = DateTimeField(auto_now=True)
-      resolved_at        = DateTimeField(null=True, blank=True)
-  ```
-- **To M4 — query managers / methods**:
-  `TriageResult.objects.active_queue()`, `TriageResult.objects.for_patient(user)`, `TriageResult.objects.aggregate_overview()`.
-- **To everyone** — migrations applied cleanly on the Neon Postgres database.
-- **To admin (M4)** — admin APIs: user management, patient management.
-
-### What I Need
-
-- **From M6** — final field list and choice values for `status`, `category`, and `priority_level` so the migration is correct first time.
-- **From M2** — the `User` model's role choices and any custom fields (e.g., `is_active`, `staff_id`).
-- **From M4** — the exact aggregations needed (counts, averages, time windows) so I can index appropriately.
-- **From M1** — exception class hierarchy so model-level validation errors (e.g., `IntegrityError`) map to the standard envelope.
-- **From DevOps / M1** — Neon Postgres connection string + migration runbook.
-
----
-
-## Member 8 — Real-Time System & Backend Testing
-
-**Module:** `apps/realtime/consumers.py`, `apps/realtime/routing.py`, `apps/realtime/services/broadcast_service.py`
-**Status:** Stub — needs Channels + Redis configuration.
-
-### What I Provide
-
-- **To M3, M6 — `broadcast_service.emit(event_type: str, payload: dict, *, group: str = "staff") -> None`**
-  Single entry point for all real-time fan-out. Idempotent and non-blocking.
-- **To staff browsers** — WebSocket endpoint `ws://.../ws/triage/staff/` that streams events to authenticated staff.
-- **To admin browsers** — WebSocket endpoint `ws://.../ws/triage/admin/` for admin-level events.
-- **To everyone — agreed event catalog**:
-
-  | Event              | Emitter | Payload                                              | Group          |
-  |--------------------|---------|------------------------------------------------------|----------------|
-  | `case.submitted`   | M3      | `{session_id, patient_id, created_at}`               | `staff`        |
-  | `case.triaged`     | M6      | full `TriageResult` dict                             | `staff`        |
-  | `case.escalated`   | M6      | `{session_id, priority_level, reason}`               | `staff,admin`  |
-  | `case.status_changed` | M6   | `{session_id, from, to, actor_id, changed_at}`       | `staff`        |
-
-- **To M1, M2, M3, M4, M5, M6, M7** — backend test suite (Postman collection + pytest integration tests + performance/load scripts).
-
-### What I Need
-
-- **From M2** — WebSocket auth middleware that validates the JWT on connect and attaches `scope["user"]`.
-- **From M3** — calls to `emit("case.submitted", ...)` after every successful submission.
-- **From M6** — calls to `emit("case.triaged" / "case.escalated" / "case.status_changed", ...)` at the agreed lifecycle points.
-- **From M4** — payload schema declaration so the WebSocket-side renderer matches the REST-side renderer.
-- **From M7** — agreement that no event will reference a row that hasn't been committed yet (M6 must persist before emitting).
-- **From M1** — exception class for "broadcast failed" so failures don't crash the request path.
-- **From DevOps / M1** — Redis connection string for the channel layer.
+**Impact:** Fixes issues #2, #4, #5, #6, #7, #8, #9, #10, #11
 
 ---
 
+### 2.2 Fix Member 6's Service Response Format
 
-## Reciprocal handshake matrix
+**File:** `triage/services/triage_service.py`
 
-Every row is one contract, written from both sides. If you change either side, both rows of the corresponding section must be updated.
+**Problem:** Returns `{"success": True, "data": {...}}` envelope
 
-| Contract | Producer says "I provide…" | Consumer says "I need…" |
-|---|---|---|
-| Authentication | M2: JWT issuance + permission classes | M3, M4, M5: permission class on every endpoint |
-| WebSocket auth | M2: WS auth middleware | M8: validated `scope["user"]` on connect |
-| Standard response envelope | M1: `ApiResponse(...)` wrapper | M3, M4, M5, M6: wrap every view return |
-| Payload sanitization | M1: `PayloadSanitizerMiddleware` | M5: prompts only see whitelisted fields |
-| AI dict | M5: `get_triage_recommendation(...)` | M6: dict (success or error envelope) |
-| Triage policy entry point | M6: `evaluate_triage(...)` | M3: single call, no direct M5 access |
-| Override entry point | M6: `override_case(...)` | M4: validated transitions + event emit |
-| `TriageResult` schema | M7: extended model + managers | M6: persistence target with all fields |
-| Query helpers | M7: `active_queue()`, `for_patient()`, `aggregate_overview()` | M4: dashboard reads |
-| Submission event | M3: `emit("case.submitted", ...)` | M8: payload to fan out |
-| Triage event | M6: `emit("case.triaged" / "case.escalated", ...)` | M8: payload to fan out |
-| Status-change event | M6: `emit("case.status_changed", ...)` | M4, M8: live dashboard refresh |
-| Event catalog | M8: agreed event names + schemas | M3, M4, M6: emit / consume the same shapes |
+**Fix:**
+```python
+# Option A: Change evaluate_triage() to return direct dict
+def evaluate_triage(symptoms: str) -> dict:
+    # ... existing logic ...
+    
+    # Return direct triage result (no envelope)
+    return {
+        "priority": result["priority"],
+        "urgency_score": result["urgency_score"],
+        "condition": result["condition"],
+        "status": result["status"],
+        "is_critical": result["is_critical"]
+    }
 
----
+# Option B: Keep internal format, extract in view (current approach)
+# View extracts: triage_result["data"]["triage_result"]
+```
 
-## Integration phases (recommended order)
+**Recommendation:** Option B (less breaking changes for now)
 
-Build in dependency order. Each phase ends with a contract test that two members run together.
-
-### Phase A — Foundation (parallel, no dependencies)
-
-| Task | Owner | Unblocks |
-|---|---|---|
-| JWT + role permissions | M2 | M3, M4 endpoints |
-| Standard `ApiResponse` + exception handler | M1 | All views |
-| Real `TriageResult` schema with FKs and status | M7 | M6, M4 |
-| **AI service + prompt engine + tests** | **M5 (done)** | M6 |
-
-**Exit criterion:** M7's migrations run cleanly on Neon; M2's `IsAuthenticated` rejects anonymous requests; M5's tests pass; M1's response wrapper is used by at least one view.
-
-### Phase B — Core triage path (sequential)
-
-1. **M6** implements `evaluate_triage()` — consumes M5's dict, applies policy, calls M7 to persist.
-2. **M3** rewires `PatientTriageView.post()` to call `evaluate_triage()` instead of returning mock data.
-3. **M3** + **M6** emit their respective events through M8's `broadcast_service.emit()`.
-4. **M8** wires `consumers.py` to subscribe groups by role (`staff`, `admin`).
-5. **M4** swaps mock counts for real ORM queries on `TriageResult`.
-
-**Exit criterion:** A patient `POST /api/v1/triage/` produces a real DB row, the staff dashboard endpoint returns it, and a connected WebSocket client receives a `case.triaged` event within 1 s.
-
-### Phase C — Hardening
-
-| Task | Owner |
-|---|---|
-| Status transition endpoint with validated transitions | M6 + M4 |
-| Critical-alert escalation event wired to WebSocket | M6 + M8 |
-| Performance / integration test suite | M8 |
-| Audit log on every transition | M6 + M7 |
-| Admin overview aggregations (real queries) | M4 + M7 |
+**Impact:** Fixes issue #21
 
 ---
 
-## High-risk seams (will break silently if ignored)
+### 2.3 Add WebSocket Broadcasts After Status Updates
 
-| Seam | Members involved | Failure mode if uncoordinated |
-|---|---|---|
-| AI dict shape | M5 ↔ M6 | M6's serializer fails when M5 changes a key name |
-| `TriageResult` schema | M6 ↔ M7 | M6 writes fields M7 didn't migrate → runtime errors |
-| Event payload shape | M3 / M6 ↔ M8 ↔ M4 | Frontend receives unexpected JSON, dashboard breaks silently |
-| Permission classes | M2 ↔ everyone | An endpoint forgets the class → unauth POSTs reach M5, burn Gemini quota |
+**File:** `dashboard/services/dashboard_service.py`
 
-Lock each of these in writing (this document or a short `contracts.py`) **before** parallel work starts.
+**Fix:**
+```python
+from apps.realtime.services.broadcast_service import broadcast_status_changed
+from apps.triage.services.triage_service import validate_status_transition
+
+def update_patient_status(patient_id, new_status):
+    """Update workflow status with validation and broadcast"""
+    try:
+        patient = PatientSubmission.objects.get(id=patient_id)
+        
+        # Validate transition (Member 6's logic)
+        if not validate_status_transition(patient.status, new_status):
+            raise ValueError(f"Invalid transition: {patient.status} -> {new_status}")
+        
+        # Update status
+        patient.status = new_status
+        patient.save()
+        
+        # Broadcast event (Member 8)
+        broadcast_status_changed(patient_id, new_status)
+        
+        return patient
+    except PatientSubmission.DoesNotExist:
+        return None
+```
+
+**Impact:** Fixes issues #16, #27, #28
 
 ---
 
-## One-paragraph summary
+### 2.4 Fix WebSocket Event Names
 
-> A patient POSTs symptoms to **M3**, which (after **M2** authenticates) calls **M6**'s `evaluate_triage()`. M6 calls **M5**'s `get_triage_recommendation()` and gets back either a clean dict or an error envelope. M6 applies priority-mapping policy, decides on fallback if needed, and persists the result via **M7**'s ORM, transitioning status to `queued` (or `escalated` if critical). M6 emits `case.triaged` through **M8**'s broadcast service. M8 fans the event to subscribed staff WebSocket connections. **M4**'s dashboard endpoint queries M7 for the same data on REST refresh. **M1** wraps every response in the standard envelope. Every step except the AI call itself is gated on **M2**'s permission class.
+**File:** `realtime/services/event_service.py`
+
+**Fix:**
+```python
+def build_patient_created_event(patient_id: int, priority: int, urgency_score: int) -> dict:
+    """Triggered when a new patient submission is created."""
+    return _base_event(
+        "TRIAGE_CREATED",  # ✅ Changed from PATIENT_CREATED
+        {
+            "id": patient_id,
+            "priority": priority,
+            "urgency_score": urgency_score,
+        },
+    )
+
+def build_status_changed_event(patient_id: int, status: str) -> dict:
+    """Triggered when staff updates a patient status."""
+    return _base_event(
+        "TRIAGE_UPDATED",  # ✅ Changed from STATUS_CHANGED
+        {
+            "id": patient_id,
+            "status": status,
+        },
+    )
+```
+
+**Impact:** Fixes issues #8, #31
+
+---
+
+## 📋 Phase 3: API Contract Compliance (2-3 hours)
+
+**Goal:** Match all responses to API contract exactly
+
+### 3.1 Fix Authentication Responses
+
+**File:** `authentication/views.py`
+
+**Current:**
+```python
+return success_response({
+    "user": serializer.data,
+    "tokens": tokens
+})
+```
+
+**Fix:**
+```python
+# RegisterView
+return Response({
+    "access_token": tokens['access'],
+    "refresh_token": tokens['refresh'],
+    "role": user.role,
+    "user_id": user.id,
+    "name": user.username,
+    "email": user.email
+}, status=status.HTTP_201_CREATED)
+
+# LoginView
+return Response({
+    "access_token": tokens['access'],
+    "refresh_token": tokens['refresh'],
+    "role": user.role,
+    "user_id": user.id,
+    "name": user.username,
+    "email": user.email
+})
+```
+
+**Impact:** Fixes issue #1
+
+---
+
+### 3.2 Add Missing Refresh Token Endpoint
+
+**File:** `authentication/views.py`
+
+**Add:**
+```python
+from rest_framework_simplejwt.views import TokenRefreshView
+
+class RefreshTokenView(TokenRefreshView):
+    """POST /api/v1/auth/refresh/"""
+    pass
+```
+
+**File:** `authentication/urls.py`
+
+**Add:**
+```python
+path('refresh/', RefreshTokenView.as_view(), name='token-refresh'),
+```
+
+**Impact:** Fixes issue #3
+
+---
+
+### 3.3 Fix Dashboard Serializer Field Names
+
+**File:** `dashboard/serializers.py`
+
+**Current:**
+```python
+description = serializers.CharField(source="symptoms")  # ✅ Already correct
+```
+
+**Verify:** This is already correct - maps model's "symptoms" to API's "description"
+
+---
+
+### 3.4 Add Missing Endpoints
+
+**Files to Create:**
+
+1. **`patients/views.py` - Patient Profile Management**
+```python
+class PatientProfileView(APIView):
+    """GET/PATCH /api/v1/patients/profile/"""
+    permission_classes = [IsAuthenticated, IsPatient]
+    
+    def get(self, request):
+        # Return patient profile
+        pass
+    
+    def patch(self, request):
+        # Update patient profile
+        pass
+
+class PatientHistoryView(APIView):
+    """GET /api/v1/patients/history/"""
+    permission_classes = [IsAuthenticated, IsPatient]
+    
+    def get(self, request):
+        # Return patient's triage history
+        pass
+```
+
+2. **`triage/views.py` - Triage History**
+```python
+class TriageSubmissionsListView(APIView):
+    """GET /api/v1/triage-submissions/"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        email = request.query_params.get('email')
+        
+        # Patient role: always scoped to self
+        if request.user.role == 'patient':
+            submissions = PatientSubmission.objects.filter(
+                patient__user=request.user
+            ).order_by('-created_at')
+        # Staff/admin: can filter by email
+        else:
+            if email:
+                submissions = PatientSubmission.objects.filter(
+                    patient__user__email=email
+                ).order_by('-created_at')
+            else:
+                submissions = PatientSubmission.objects.all().order_by('-created_at')
+        
+        serializer = DashboardPatientSerializer(submissions, many=True)
+        return Response(serializer.data)
+```
+
+**Impact:** Fixes issues #12, #13, #20
+
+---
+
+## 📋 Phase 4: Model & Database Fixes (1-2 hours)
+
+**Goal:** Clean up model confusion
+
+### 4.1 Decision: Which Model to Use?
+
+**Current Situation:**
+- `TriageSession` (triage/models.py) - Exists but unused
+- `PatientSubmission` (patients/models.py) - Actually used everywhere
+
+**Options:**
+
+**Option A: Keep PatientSubmission (Recommended)**
+- ✅ Already used everywhere
+- ✅ Has all required fields
+- ✅ Less breaking changes
+- ❌ Name doesn't match API contract ("TriageItem")
+
+**Option B: Migrate to TriageSession**
+- ✅ Better name
+- ❌ Requires migrating all code
+- ❌ Missing some fields
+
+**Option C: Create TriageItem as Proxy**
+```python
+# patients/models.py
+class TriageItem(PatientSubmission):
+    class Meta:
+        proxy = True
+```
+
+**Recommendation:** Option A - Keep `PatientSubmission`, add comment explaining it's the "TriageItem" from API contract
+
+---
+
+### 4.2 Delete Unused Models
+
+**File:** `triage/models.py`
+
+**Action:**
+```python
+# Delete or comment out:
+# - TriageSession (if not used)
+# - AIResult (if not used)
+# - FileUpload (if not used)
+
+# Or add comment:
+# NOTE: These models are for future features (file uploads, session tracking)
+# Current implementation uses PatientSubmission from patients app
+```
+
+**Impact:** Fixes issue #23
+
+---
+
+## 📋 Phase 5: Performance & Quality (1-2 hours)
+
+**Goal:** Optimize queries and add missing features
+
+### 5.1 Add select_related() to Dashboard Queries
+
+**File:** `dashboard/services/dashboard_service.py`
+
+**Fix:**
+```python
+def get_patient_queue(priority=None, status=None):
+    queryset = PatientSubmission.objects.select_related(
+        'patient__user'
+    ).all()
+    
+    if priority:
+        queryset = queryset.filter(priority=priority)
+    if status:
+        queryset = queryset.filter(status=status)
+    
+    return queryset.order_by("-urgency_score")
+```
+
+**Impact:** Fixes issue #29
+
+---
+
+### 5.2 Add Logging
+
+**File:** Create `core/logging.py`
+
+```python
+import logging
+
+def get_logger(name):
+    """Get configured logger for module"""
+    logger = logging.getLogger(name)
+    return logger
+```
+
+**Usage in views:**
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+def post(self, request):
+    logger.info(f"Triage submission from user {request.user.id}")
+    # ... rest of code
+```
+
+**Impact:** Fixes issue #22
+
+---
+
+### 5.3 Add Missing Validators
+
+**File:** Create `core/validators.py`
+
+```python
+from rest_framework import serializers
+
+def validate_description_length(value):
+    """Validate description is <= 500 chars"""
+    if len(value) > 500:
+        raise serializers.ValidationError(
+            "Description cannot exceed 500 characters"
+        )
+    return value
+
+def validate_priority(value):
+    """Validate priority is 1-5"""
+    if not (1 <= value <= 5):
+        raise serializers.ValidationError(
+            "Priority must be between 1 and 5"
+        )
+    return value
+
+def validate_urgency_score(value):
+    """Validate urgency score is 0-100"""
+    if not (0 <= value <= 100):
+        raise serializers.ValidationError(
+            "Urgency score must be between 0 and 100"
+        )
+    return value
+```
+
+**Impact:** Fixes issue #36
+
+---
+
+## 📋 Phase 6: Testing & Verification (2-3 hours)
+
+**Goal:** Ensure everything works end-to-end
+
+### 6.1 Manual Testing Checklist
+
+**Test Flow 1: Patient Submission**
+```bash
+# 1. Register patient
+POST /api/v1/auth/register/
+{
+  "username": "patient1",
+  "password": "test123",
+  "role": "patient"
+}
+
+# 2. Login
+POST /api/v1/auth/login/
+{
+  "username": "patient1",
+  "password": "test123"
+}
+
+# 3. Submit triage
+POST /api/v1/triage/
+Authorization: Bearer <token>
+{
+  "description": "Chest pain and sweating"
+}
+
+# Expected: 201 Created with direct TriageItem shape
+# Expected: WebSocket event TRIAGE_CREATED broadcast
+```
+
+**Test Flow 2: Staff Dashboard**
+```bash
+# 1. Login as staff
+POST /api/v1/auth/login/
+{
+  "username": "staff1",
+  "password": "test123"
+}
+
+# 2. Get patient queue
+GET /api/v1/dashboard/staff/patients/
+Authorization: Bearer <token>
+
+# Expected: Array of patients sorted by urgency_score DESC
+
+# 3. Update status
+PATCH /api/v1/dashboard/staff/patient/1/status/
+Authorization: Bearer <token>
+{
+  "status": "in_progress"
+}
+
+# Expected: Status updated
+# Expected: WebSocket event TRIAGE_UPDATED broadcast
+```
+
+**Test Flow 3: WebSocket**
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8000/ws/triage/events/');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Event:', data.type);  // Should be TRIAGE_CREATED, TRIAGE_UPDATED, CRITICAL_ALERT
+};
+```
+
+---
+
+### 6.2 Automated Testing
+
+**Create:** `triage/tests/test_integration.py`
+
+```python
+from django.test import TestCase
+from rest_framework.test import APIClient
+from apps.authentication.models import User
+from apps.patients.models import Patient, PatientSubmission
+
+class TriageIntegrationTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.patient_user = User.objects.create_user(
+            username='patient1',
+            password='test123',
+            role='patient'
+        )
+        self.patient = Patient.objects.create(
+            user=self.patient_user,
+            name='Patient One'
+        )
+    
+    def test_full_triage_flow(self):
+        """Test complete flow: submit -> triage -> save -> broadcast"""
+        # Login
+        response = self.client.post('/api/v1/auth/login/', {
+            'username': 'patient1',
+            'password': 'test123'
+        })
+        token = response.data['access_token']
+        
+        # Submit triage
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.post('/api/v1/triage/', {
+            'description': 'Chest pain'
+        })
+        
+        # Assertions
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('id', response.data)
+        self.assertIn('priority', response.data)
+        self.assertIn('urgency_score', response.data)
+        self.assertEqual(response.data['description'], 'Chest pain')
+        
+        # Verify saved to database
+        submission = PatientSubmission.objects.get(id=response.data['id'])
+        self.assertEqual(submission.symptoms, 'Chest pain')
+        self.assertIsNotNone(submission.priority)
+```
+
+---
+
+## 📊 Implementation Timeline
+
+### Week 1: Critical Fixes
+- **Day 1-2:** Phase 1 (Architectural fixes)
+- **Day 3-4:** Phase 2 (Integration fixes)
+- **Day 5:** Phase 3 (API contract compliance)
+
+### Week 2: Quality & Testing
+- **Day 1:** Phase 4 (Model cleanup)
+- **Day 2:** Phase 5 (Performance & quality)
+- **Day 3-4:** Phase 6 (Testing)
+- **Day 5:** Bug fixes & polish
+
+---
+
+## 🎯 Success Criteria
+
+### Must Have (Before Merge):
+- [ ] All 15 critical issues fixed
+- [ ] Main triage flow works end-to-end
+- [ ] API responses match contract exactly
+- [ ] WebSocket events broadcast correctly
+- [ ] No broken imports or missing functions
+
+### Should Have (Before Production):
+- [ ] All 18 high-priority issues fixed
+- [ ] Performance optimized (select_related)
+- [ ] Logging added
+- [ ] Integration tests passing
+
+### Nice to Have (Future):
+- [ ] All 12 medium-priority issues fixed
+- [ ] Complete test coverage
+- [ ] API documentation
+- [ ] Rate limiting
+
+---
+
+## 🚨 Risk Mitigation
+
+### Risks:
+1. **Breaking existing code** - Many files need changes
+2. **Merge conflicts** - Other members may be working
+3. **Database migrations** - Model changes need migrations
+4. **WebSocket testing** - Hard to test without frontend
+
+### Mitigation:
+1. **Create feature branch** - `feature/integration-fixes`
+2. **Fix in phases** - Test after each phase
+3. **Keep old code** - Comment out, don't delete immediately
+4. **Document changes** - Update README with changes
+5. **Coordinate with team** - Announce changes in advance
+
+---
+
+## 📝 Communication Plan
+
+### Before Starting:
+- [ ] Share this plan with all team members
+- [ ] Get approval from tech lead
+- [ ] Announce in team chat: "Starting integration fixes"
+
+### During Implementation:
+- [ ] Daily updates on progress
+- [ ] Flag any blockers immediately
+- [ ] Ask for help when stuck
+
+### After Completion:
+- [ ] Demo the working flow
+- [ ] Update documentation
+- [ ] Create PR with detailed description
+- [ ] Request code review
+
+---
+
+## 🎓 Lessons Learned
+
+### What Went Wrong:
+1. **No integration testing** during development
+2. **No architectural review** before coding
+3. **API contract not enforced** with validation
+4. **Members worked in silos** without communication
+
+### How to Prevent:
+1. **Daily standups** - Share what you're building
+2. **Code reviews** - Catch issues early
+3. **Integration tests** - Test member handoffs
+4. **API contract validation** - Automated checks
+5. **Shared models** - Agree on data structures first
+
+---
+
+**Generated:** 2026-04-28  
+**Status:** ✅ Ready for Implementation  
+**Estimated Total Time:** 12-15 hours  
+**Priority:** 🔴 Critical - Required for MVP

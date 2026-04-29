@@ -11,6 +11,15 @@ class Patient(models.Model):
     name = models.CharField(max_length=255)
     date_of_birth = models.DateField(null=True, blank=True)
     contact_info = models.CharField(max_length=255, blank=True)
+    
+    # Additional profile fields for generic profile endpoint
+    gender = models.CharField(max_length=50, blank=True, null=True)
+    age = models.IntegerField(null=True, blank=True)
+    blood_type = models.CharField(max_length=10, blank=True, null=True)
+    health_history = models.TextField(blank=True, null=True)
+    allergies = models.TextField(blank=True, null=True)
+    current_medications = models.TextField(blank=True, null=True)
+    bad_habits = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.name
@@ -42,7 +51,13 @@ class PatientSubmission(models.Model):
     )
 
     # STAFF ACTIONS
-    verified_by = models.CharField(max_length=255, null=True, blank=True)
+    verified_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_submissions"
+    )
     verified_at = models.DateTimeField(null=True, blank=True)
 
     # TIMESTAMPS

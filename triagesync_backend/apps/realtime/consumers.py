@@ -1,8 +1,10 @@
 import json
+import logging
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 TRIAGE_GROUP = "triage_events"
+logger = logging.getLogger(__name__)
 
 
 class TriageEventsConsumer(AsyncWebsocketConsumer):
@@ -15,14 +17,26 @@ class TriageEventsConsumer(AsyncWebsocketConsumer):
       - critical_alert
       - status_changed
 
-    Note: JWT authentication on connect is handled by M2 (auth middleware).
-    This consumer assumes the connection is already authenticated by the time
-    it reaches connect().
+    Note: JWT authentication and role-based authorization are enforced by
+    JWTAuthMiddleware before connections reach this consumer. All connections
+    are guaranteed to have an authenticated user with authorized role.
     """
 
     group_name = TRIAGE_GROUP
 
     async def connect(self):
+        # Access authenticated user from scope (provided by JWTAuthMiddleware)
+        user = self.scope.get('user')
+        
+        if user and user.is_authenticated:
+            logger.info(
+                f"WebSocket connection established for user {user.username} "
+                f"(role: {user.role}, channel: {self.channel_name})"
+            )
+        else:
+            # This should not happen if middleware is working correctly
+            logger.warning(f"WebSocket connection without authenticated user (channel: {self.channel_name})")
+        
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.patients.models import PatientSubmission
+from triagesync_backend.apps.patients.models import PatientSubmission
 
 
 class DashboardPatientSerializer(serializers.ModelSerializer):
@@ -18,7 +18,7 @@ class DashboardPatientSerializer(serializers.ModelSerializer):
             "condition",
             "status",
             "photo_name",
-            "verified_by",
+            "verified_by_user",
             "verified_at",
             "created_at",
         )

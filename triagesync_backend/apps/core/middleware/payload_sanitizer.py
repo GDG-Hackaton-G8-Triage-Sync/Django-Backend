@@ -1,4 +1,4 @@
-"""Triage-specific request hygiene middleware.
+"""Payload sanitization middleware - moved from triage app to core app.
 
 Owns the input gate to the AI prompt: enforces a strict whitelist of allowed
 keys ({age, gender, symptoms}) on inbound JSON, strips ASCII control
@@ -7,6 +7,9 @@ characters, and caps symptoms length. Sets request-scoped attributes
 
 Runs only on JSON requests under ``/api/v1/triage/`` -- non-triage paths and
 multipart uploads pass through untouched.
+
+This middleware belongs in core/ app per Member 1's responsibilities for
+core infrastructure components.
 """
 import json
 import re

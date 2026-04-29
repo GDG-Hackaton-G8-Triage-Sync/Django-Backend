@@ -121,15 +121,15 @@ def safe_infer_priority(symptoms: str) -> dict:
 # Real-time event helpers
 # -------------------------
 def trigger_critical_alert(urgency_score: int, condition: str) -> None:
-    """Broadcast a critical_alert WebSocket event (priority == 1)."""
+    """Log critical alert information (actual broadcast handled by TriageSubmissionView)."""
+    # Note: Critical alert WebSocket broadcast is handled by broadcast_patient_created()
+    # in TriageSubmissionView after PatientSubmission is created with patient_id
     try:
-        broadcast_critical_alert({
-            "urgency_score": urgency_score,
-            "condition": condition,
-            "message": "Immediate medical attention required",
-        })
+        import logging
+        logger = logging.getLogger("triage.critical")
+        logger.warning(f"Critical condition detected: {condition} (urgency: {urgency_score})")
     except Exception:
-        # Never let broadcast failure block the triage response
+        # Never let logging failure block the triage response
         pass
 
 
@@ -149,21 +149,45 @@ def build_event(priority: int, urgency_score: int) -> dict:
     """Build the inline event summary returned in the API response."""
     if priority == 1:
         return {
-            "event_type": "critical_alert",
+            "event_type": "CRITICAL_ALERT",
             "level": "HIGH",
             "message": "Immediate medical attention required",
         }
     if priority == 2:
         return {
-            "event_type": "urgent_alert",
+            "event_type": "URGENT_ALERT",
             "level": "MEDIUM",
             "message": "Patient needs quick review",
         }
     return {
-        "event_type": "log_only",
+        "event_type": "LOG_ONLY",
         "level": "LOW",
         "message": "No immediate action required",
     }
+
+
+# -------------------------
+# Status management
+# -------------------------
+VALID_STATUSES = ["waiting", "in_progress", "completed"]
+
+
+def validate_status_transition(current_status: str, new_status: str) -> bool:
+    """
+    Validate status transition rules.
+    Returns True if transition is allowed.
+    """
+    if new_status not in VALID_STATUSES:
+        return False
+    
+    # Define allowed transitions
+    allowed_transitions = {
+        "waiting": ["in_progress", "completed"],
+        "in_progress": ["completed", "waiting"],
+        "completed": [],  # Cannot transition from completed
+    }
+    
+    return new_status in allowed_transitions.get(current_status, [])
 
 
 # -------------------------

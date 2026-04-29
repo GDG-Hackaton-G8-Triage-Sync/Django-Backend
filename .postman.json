@@ -25,6 +25,473 @@
   ],
   "item": [
     {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "POST /api/v1/auth/login/ - Patient Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access');",
+                  "    pm.expect(jsonData).to.have.property('refresh');",
+                  "});",
+                  "",
+                  "// Save access token for subsequent requests",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('patient_access_token', jsonData.access);",
+                  "pm.collectionVariables.set('patient_refresh_token', jsonData.refresh);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"patient_test\",\n  \"password\": \"testpass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login", ""]
+            },
+            "description": "Login as patient user to get JWT tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/auth/login/ - Staff Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Save staff access token",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('staff_access_token', jsonData.access);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff_test\",\n  \"password\": \"testpass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login", ""]
+            },
+            "description": "Login as staff user to test authorization"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Patient Endpoints",
+      "item": [
+        {
+          "name": "GET /api/v1/patients/profile/ - Get Patient Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has profile fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('date_of_birth');",
+                  "    pm.expect(jsonData).to.have.property('contact_info');",
+                  "    pm.expect(jsonData).to.have.property('user_id');",
+                  "    pm.expect(jsonData).to.have.property('username');",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "});",
+                  "",
+                  "// Save patient ID for subsequent tests",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('patient_id', jsonData.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Get authenticated patient's profile"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/v1/patients/profile/ - Update Patient Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile updated successfully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.equal('John Doe Updated');",
+                  "    pm.expect(jsonData.contact_info).to.equal('555-1234');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe Updated\",\n  \"date_of_birth\": \"1990-05-15\",\n  \"contact_info\": \"555-1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Update authenticated patient's profile"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/profile/ - Unauthorized (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Test authentication requirement"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/profile/ - Forbidden (Staff Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message indicates permission denied\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staff_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Test that staff cannot access patient endpoints"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/history/ - Get Patient History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has submissions array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('submissions');",
+                  "    pm.expect(jsonData).to.have.property('count');",
+                  "    pm.expect(jsonData.submissions).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Save first submission ID if exists",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.submissions.length > 0) {",
+                  "    pm.collectionVariables.set('submission_id', jsonData.submissions[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/history/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "history", ""]
+            },
+            "description": "Get all patient's triage submissions"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/history/ - Empty History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Empty submissions array returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.submissions).to.be.an('array');",
+                  "    pm.expect(jsonData.count).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/history/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "history", ""]
+            },
+            "description": "Test patient with no submission history"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/current/ - Get Current Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has current_submission field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('current_submission');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test(\"If active session exists, has required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.current_submission !== null) {",
+                  "        pm.expect(jsonData.current_submission).to.have.property('id');",
+                  "        pm.expect(jsonData.current_submission).to.have.property('symptoms');",
+                  "        pm.expect(jsonData.current_submission).to.have.property('status');",
+                  "        pm.expect(['waiting', 'in_progress']).to.include(jsonData.current_submission.status);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/current/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "current", ""]
+            },
+            "description": "Get patient's most recent active submission"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/submissions/{id}/ - Get Submission Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Response has submission fields\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.expect(jsonData).to.have.property('symptoms');",
+                  "        pm.expect(jsonData).to.have.property('priority');",
+                  "        pm.expect(jsonData).to.have.property('urgency_score');",
+                  "        pm.expect(jsonData).to.have.property('status');",
+                  "        pm.expect(jsonData).to.have.property('created_at');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/submissions/{{submission_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "submissions", "{{submission_id}}", ""]
+            },
+            "description": "Get specific submission details"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/submissions/999999/ - Submission Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/submissions/999999/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "submissions", "999999", ""]
+            },
+            "description": "Test non-existent submission ID"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Triage AI Endpoints",
       "item": [
         {

@@ -1,19 +1,39 @@
 # Serializer for validating Gemini AI output
 from rest_framework import serializers
-from .models import TriageResult
+from triagesync_backend.apps.patients.models import PatientSubmission
 
 
-# If you have an input serializer for user data, vital_signs should be optional.
-# Here is an example input serializer with optional vital_signs:
-
-# User input serializer: expects symptoms, age, gender as separate fields
 class TriageUserInputSerializer(serializers.Serializer):
+    """User input serializer: expects symptoms, age, gender as separate fields"""
     symptoms = serializers.CharField(required=True)
     age = serializers.IntegerField(required=False, allow_null=True)
     gender = serializers.CharField(required=False, allow_null=True)
-    # All other fields (medical_history, vital_signs) are not included in the triage input
+
+
+class TriageSubmissionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for triage submission responses
+    Maps model field "symptoms" to API field "description"
+    """
+    description = serializers.CharField(source="symptoms")
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S.%fZ')
+    
+    class Meta:
+        model = PatientSubmission
+        fields = (
+            "id",
+            "description",  # API field name
+            "priority",
+            "urgency_score", 
+            "condition",
+            "status",
+            "photo_name",
+            "created_at"
+        )
+
 
 class TriageAIResponseSerializer(serializers.Serializer):
+    """Serializer for AI triage response validation"""
     priority_level = serializers.IntegerField(min_value=1, max_value=5)
     urgency_score = serializers.IntegerField(min_value=0, max_value=100)
     condition = serializers.CharField()
@@ -22,16 +42,10 @@ class TriageAIResponseSerializer(serializers.Serializer):
     explanation = serializers.ListField(child=serializers.CharField(), min_length=1)
     recommended_action = serializers.CharField()
     reason = serializers.CharField()
-    # priority (string) is ignored if present in the AI response
 
 
-class TriageResultSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TriageResult
-        fields = ("id", "priority", "explanation", "created_at")
-
-# PDF upload serializer (5MB limit)
 class PDFUploadSerializer(serializers.Serializer):
+    """PDF upload serializer (5MB limit)"""
     file = serializers.FileField()
 
     def validate_file(self, value):

@@ -19,5 +19,31 @@ class TriageSubmissionSerializer(serializers.Serializer):
 class PatientSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PatientSubmission
-        fields = ['id', 'patient', 'symptoms', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'patient', 'symptoms', 'priority', 'urgency_score', 'condition', 'status', 'photo_name', 'created_at', 'processed_at', 'verified_by_user', 'verified_at']
+        read_only_fields = fields
+
+
+class TriageSubmissionHistorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for triage submission history retrieval.
+    Used by TriageSubmissionsHistoryView for GET /api/v1/triage-submissions/
+    
+    All fields are read-only as this is a GET-only endpoint.
+    Includes patient_email field that pulls from patient.user.email relationship.
+    """
+    patient_email = serializers.EmailField(source='patient.user.email', read_only=True)
+    
+    class Meta:
+        model = PatientSubmission
+        fields = [
+            'id',
+            'patient_email',
+            'symptoms',
+            'priority',
+            'urgency_score',
+            'condition',
+            'status',
+            'created_at',
+            'processed_at'
+        ]
+        read_only_fields = fields

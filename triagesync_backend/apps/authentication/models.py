@@ -23,5 +23,8 @@ class User(AbstractUser):
     def is_admin(self):
         return self.role == self.Roles.ADMIN
 
+    def is_patient(self):
+        return self.role == self.Roles.PATIENT
+
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"

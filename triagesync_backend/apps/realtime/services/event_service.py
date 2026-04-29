@@ -18,9 +18,9 @@ def _base_event(event_type: str, data: dict) -> dict:
 def build_patient_created_event(patient_id: int, priority: int, urgency_score: int) -> dict:
     """Triggered when a new patient submission is created (M3 calls this)."""
     return _base_event(
-        "PATIENT_CREATED",
+        "TRIAGE_CREATED",
         {
-            "id": patient_id,
+            "submission_id": patient_id,
             "priority": priority,
             "urgency_score": urgency_score,
         },
@@ -32,7 +32,7 @@ def build_priority_update_event(patient_id: int, priority: int, urgency_score: i
     return _base_event(
         "PRIORITY_UPDATE",
         {
-            "id": patient_id,
+            "submission_id": patient_id,
             "priority": priority,
             "urgency_score": urgency_score,
         },
@@ -44,7 +44,7 @@ def build_critical_alert_event(patient_id: int) -> dict:
     return _base_event(
         "CRITICAL_ALERT",
         {
-            "id": patient_id,
+            "submission_id": patient_id,
             "priority": 1,
             "message": "Critical patient detected!",
         },
@@ -54,9 +54,9 @@ def build_critical_alert_event(patient_id: int) -> dict:
 def build_status_changed_event(patient_id: int, status: str) -> dict:
     """Triggered when staff updates a patient status (waiting/in_progress/completed)."""
     return _base_event(
-        "STATUS_CHANGED",
+        "TRIAGE_UPDATED",
         {
-            "id": patient_id,
-            "status": status,
+            "submission_id": patient_id,
+            "new_status": status,
         },
     )

@@ -1,4 +1,4 @@
-import os
+﻿import os
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
@@ -43,16 +43,18 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
-    "apps.authentication",
-    "apps.patients",
-    "apps.triage",
-    "apps.realtime",
-    "apps.dashboard",
-    "apps.core",
+    "triagesync_backend.apps.core",
+    "triagesync_backend.apps.authentication",
+    "triagesync_backend.apps.patients",
+    "triagesync_backend.apps.triage",
+    "triagesync_backend.apps.realtime",
+    "triagesync_backend.apps.dashboard",
+    "triagesync_backend.apps.api_admin",
+    "triagesync_backend.apps.notifications",
 ]
 
 MIDDLEWARE = [
-    "triagesync_backend.apps.triage.middleware.PayloadSanitizerMiddleware",
+    "triagesync_backend.apps.core.middleware.payload_sanitizer.PayloadSanitizerMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -61,7 +63,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "triagesync_backend.apps.core.middleware.RequestIDMiddleware",
 ]
 
 ROOT_URLCONF = "triagesync_backend.config.urls"
@@ -89,17 +90,28 @@ database_url = os.getenv("DATABASE_URL")
 
 if database_url:
     tmpPostgres = urlparse(database_url)
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": tmpPostgres.path.replace("/", ""),
-            "USER": tmpPostgres.username,
-            "PASSWORD": tmpPostgres.password,
-            "HOST": tmpPostgres.hostname,
-            "PORT": tmpPostgres.port or 5432,
-            "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
+    db_name = tmpPostgres.path.replace("/", "")
+    import sys
+    # Use SQLite for tests to avoid connection issues and improve speed
+    if 'test' in sys.argv or 'pytest' in sys.argv[0]:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": BASE_DIR / "test_db.sqlite3",
+            }
         }
-    }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": db_name,
+                "USER": tmpPostgres.username,
+                "PASSWORD": tmpPostgres.password,
+                "HOST": tmpPostgres.hostname,
+                "PORT": tmpPostgres.port or 5432,
+                "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
+            }
+        }
 else:
     # Local fallback for development
     DATABASES = {
@@ -134,6 +146,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "EXCEPTION_HANDLER": "triagesync_backend.apps.core.exceptions.custom_exception_handler",
 }
 
 SIMPLE_JWT = {
@@ -154,7 +167,7 @@ if REDIS_URL:
         }
     }
 else:
-    # Fallback for local dev without Redis — not suitable for multi-process deployments
+    # Fallback for local dev without Redis â€” not suitable for multi-process deployments
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -188,3 +201,45 @@ GEMINI_MODEL_LIST_TTL_SECONDS = int(os.getenv("GEMINI_MODEL_LIST_TTL_SECONDS", "
 # and short-circuit to the rule-based fallback for COOLDOWN_SECONDS.
 GEMINI_CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("GEMINI_CIRCUIT_BREAKER_THRESHOLD", "5"))
 GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS = int(os.getenv("GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "30"))
+
+# --- Logging Configuration ---
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'triagesync_backend.apps.realtime.middleware': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'triagesync_backend.apps.realtime.consumers': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+}
+
+
+
+

@@ -1,18 +1,22 @@
 import json
 
 import pytest
+
+# Skip all tests in this module if daphne is not installed
+pytest.importorskip("daphne")
+
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.test import TestCase
 
-from apps.realtime.consumers import TriageEventsConsumer
-from apps.realtime.services.broadcast_service import (
+from triagesync_backend.apps.realtime.consumers import TriageEventsConsumer
+from triagesync_backend.apps.realtime.services.broadcast_service import (
     broadcast_critical_alert,
     broadcast_patient_created,
     broadcast_priority_update,
     broadcast_status_changed,
 )
-from apps.realtime.services.event_service import (
+from triagesync_backend.apps.realtime.services.event_service import (
     build_critical_alert_event,
     build_patient_created_event,
     build_priority_update_event,
@@ -183,7 +187,7 @@ class TriageBroadcastIntegrationTests(TestCase):
 
     def test_evaluate_triage_triggers_broadcast(self):
         from unittest.mock import patch
-        from apps.triage.services.triage_service import evaluate_triage
+        from triagesync_backend.apps.triage.services.triage_service import evaluate_triage
 
         with patch("apps.triage.services.triage_service.broadcast_patient_created") as mock_broadcast:
             result = evaluate_triage(symptoms="chest pain", patient_id=42)

@@ -8,7 +8,7 @@ import json
 import pytest
 from django.test import RequestFactory
 
-from triagesync_backend.apps.triage.middleware import (
+from triagesync_backend.apps.core.middleware.payload_sanitizer import (
     MAX_SYMPTOMS_LENGTH,
     PayloadSanitizerMiddleware,
 )
