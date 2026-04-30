@@ -10,6 +10,7 @@ from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSeri
 from .services.auth_service import get_tokens_for_user
 from triagesync_backend.apps.core.response import error_response
 from triagesync_backend.apps.patients.models import Patient
+from triagesync_backend.apps.notifications.services.notification_service import NotificationService
 
 
 class RegisterView(APIView):
@@ -38,6 +39,29 @@ class RegisterView(APIView):
 
         user = serializer.save()
         tokens = get_tokens_for_user(user)
+
+        # Send welcome notification to new user
+        try:
+            welcome_message = f"Welcome to TriageSync! Your {user.role} account has been successfully created."
+            if user.role == 'patient':
+                welcome_message += " You can now submit triage requests and track your medical status."
+            else:
+                welcome_message += " You can now access the staff dashboard and manage patient cases."
+            
+            NotificationService.create_notification(
+                user=user,
+                notification_type="system_message",
+                title="Welcome to TriageSync",
+                message=welcome_message,
+                metadata={
+                    "user_role": user.role,
+                    "registration_date": user.date_joined.isoformat(),
+                    "action_type": "user_registration"
+                }
+            )
+        except Exception:
+            # Don't fail registration if notification fails
+            pass
 
         # Return direct flat structure per API contract Section 2.1
         return Response({

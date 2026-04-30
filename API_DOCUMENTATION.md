@@ -1,6 +1,6 @@
 # TriageSync API Documentation
 
-**Version**: 1.1.0  
+**Version**: 1.2.0  
 **Last Updated**: April 30, 2026  
 **Base URL (Development)**: `http://localhost:8000`  
 **Base URL (Production)**: `https://django-backend-4r5p.onrender.com`
@@ -16,10 +16,11 @@
 5. [Patient Endpoints](#patient-endpoints)
 6. [Dashboard Endpoints (Staff Only)](#dashboard-endpoints-staff-only)
 7. [Admin Endpoints (Staff Only)](#admin-endpoints-staff-only)
-8. [WebSocket Events](#websocket-events)
-9. [Error Handling](#error-handling)
-10. [Rate Limiting & Pagination](#rate-limiting--pagination)
-11. [Status Codes](#status-codes)
+8. [Notification Endpoints](#notification-endpoints)
+9. [WebSocket Events](#websocket-events)
+10. [Error Handling](#error-handling)
+11. [Rate Limiting & Pagination](#rate-limiting--pagination)
+12. [Status Codes](#status-codes)
 
 ---
 
@@ -1133,6 +1134,240 @@ Get detailed system analytics and trends.
     {"staff_id": 5, "name": "Dr. Smith", "patients_handled": 45},
     {"staff_id": 6, "name": "Nurse Johnson", "patients_handled": 38}
   ]
+}
+```
+
+---
+
+## Notification Endpoints
+
+The notification system provides real-time and persistent notifications for users. Notifications are delivered via WebSocket for immediate updates and stored in the database for offline access.
+
+### Notification Types
+
+| Type | Description | Recipients |
+|------|-------------|------------|
+| `triage_status_change` | Patient case status updates | Patients |
+| `priority_update` | Triage priority changes | Staff (role-based) |
+| `role_change` | User role modifications | Affected user + supervisors |
+| `critical_alert` | Emergency and critical situations | Supervisors + doctors |
+| `system_message` | General system communications | All users or specific roles |
+
+### 1. List Notifications
+
+Get all notifications for the authenticated user.
+
+**Endpoint**: `GET /api/v1/notifications/`  
+**Authentication**: Required  
+**Permissions**: Any authenticated user
+
+#### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `is_read` | boolean | Filter by read status (`true` or `false`) |
+| `notification_type` | string | Filter by notification type |
+
+#### Success Response (200 OK)
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "notification_type": "triage_status_change",
+      "title": "Your Case is Being Reviewed",
+      "message": "Medical staff are now reviewing your triage submission (ID: 123). You will be notified when the review is complete.",
+      "metadata": {
+        "submission_id": 123,
+        "old_status": "waiting",
+        "new_status": "in_progress",
+        "priority": 2,
+        "condition": "High fever",
+        "staff_user_id": 5,
+        "action_type": "status_change"
+      },
+      "is_read": false,
+      "created_at": "2026-04-30T08:00:00Z",
+      "read_at": null
+    },
+    {
+      "id": 2,
+      "notification_type": "critical_alert",
+      "title": "Critical Patient Alert",
+      "message": "Priority 1 patient detected: Severe chest pain (Urgency: 95)",
+      "metadata": {
+        "urgency_score": 95,
+        "condition": "Severe chest pain",
+        "alert_type": "critical_triage"
+      },
+      "is_read": true,
+      "created_at": "2026-04-30T07:45:00Z",
+      "read_at": "2026-04-30T07:50:00Z"
+    }
+  ]
+}
+```
+
+#### Example: Filter Unread Notifications
+
+```bash
+GET /api/v1/notifications/?is_read=false
+Authorization: Bearer <access_token>
+```
+
+#### Example: Filter by Type
+
+```bash
+GET /api/v1/notifications/?notification_type=critical_alert
+Authorization: Bearer <access_token>
+```
+
+---
+
+### 2. Mark Notification as Read
+
+Mark a specific notification as read.
+
+**Endpoint**: `PATCH /api/v1/notifications/{id}/read/`  
+**Authentication**: Required  
+**Permissions**: Notification owner only
+
+#### Success Response (200 OK)
+
+```json
+{
+  "data": {
+    "id": 1,
+    "notification_type": "triage_status_change",
+    "title": "Your Case is Being Reviewed",
+    "message": "Medical staff are now reviewing your triage submission (ID: 123).",
+    "metadata": {
+      "submission_id": 123,
+      "priority": 2
+    },
+    "is_read": true,
+    "created_at": "2026-04-30T08:00:00Z",
+    "read_at": "2026-04-30T08:15:00Z"
+  }
+}
+```
+
+#### Error Response (404 Not Found)
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "Notification not found"
+}
+```
+
+---
+
+### 3. Mark All Notifications as Read
+
+Mark all notifications for the authenticated user as read.
+
+**Endpoint**: `PATCH /api/v1/notifications/read-all/`  
+**Authentication**: Required  
+**Permissions**: Any authenticated user
+
+#### Success Response (200 OK)
+
+```json
+{
+  "data": {
+    "message": "All notifications marked as read",
+    "count": 5
+  }
+}
+```
+
+---
+
+### 4. Get Unread Count
+
+Get the count of unread notifications for the authenticated user.
+
+**Endpoint**: `GET /api/v1/notifications/unread-count/`  
+**Authentication**: Required  
+**Permissions**: Any authenticated user
+
+#### Success Response (200 OK)
+
+```json
+{
+  "data": {
+    "unread_count": 3
+  }
+}
+```
+
+---
+
+### Notification Preferences
+
+Users can manage their notification preferences to control which types of notifications they receive.
+
+#### Preference Model
+
+Each user has a `NotificationPreference` object with the following fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `triage_status_change_enabled` | boolean | `true` | Receive triage status change notifications |
+| `priority_update_enabled` | boolean | `true` | Receive priority update notifications |
+| `role_change_enabled` | boolean | `true` | Receive role change notifications |
+| `critical_alert_enabled` | boolean | `true` | Receive critical alert notifications |
+| `system_message_enabled` | boolean | `true` | Receive system message notifications |
+
+**Note**: Notification preferences are created automatically when a user registers. All notification types are enabled by default (opt-out model).
+
+---
+
+### Notification Triggers
+
+Notifications are automatically created for the following events:
+
+#### Triage System
+- **Critical Cases** (Priority 1): Notifies all supervisors and doctors
+- **High Priority** (Priority 2): Notifies supervisors and doctors
+- **Medium Priority** (Priority 3): Notifies nurses and doctors
+- **Patient Submission**: Confirms submission to patient, alerts staff for critical cases
+
+#### Patient Status Management
+- **Status Changes**: Notifies patient when status changes (waiting → in_progress → completed)
+- **Staff Assignment**: Notifies both patient and assigned staff member
+- **High Priority Completion**: Notifies supervisors when Priority 1-2 cases are completed
+
+#### Authentication & Administration
+- **User Registration**: Sends welcome notification to new users
+- **Role Changes**: Notifies user and supervisors when roles are modified
+- **System Maintenance**: Broadcasts maintenance alerts to affected roles
+- **Emergency Broadcasts**: Sends critical alerts to priority staff roles
+
+---
+
+### Real-Time Delivery
+
+Notifications are delivered via two channels:
+
+1. **WebSocket (Real-time)**: Immediate delivery to active users via `user_{user_id}` channels
+2. **Database (Persistent)**: Stored for offline users and notification history
+
+**WebSocket Format**:
+```json
+{
+  "type": "notification_message",
+  "notification": {
+    "id": 1,
+    "notification_type": "critical_alert",
+    "title": "Critical Patient Alert",
+    "message": "Priority 1 patient requires immediate attention",
+    "metadata": {},
+    "is_read": false,
+    "created_at": "2026-04-30T08:00:00Z"
+  }
 }
 ```
 

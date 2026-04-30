@@ -33,6 +33,10 @@ from triagesync_backend.apps.core.validators import validate_description_length
 # Required imports for TriageSubmissionView
 from triagesync_backend.apps.patients.models import PatientSubmission, Patient
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_patient_created
+from triagesync_backend.apps.notifications.services.notification_service import NotificationService
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 MAX_INPUT_LENGTH = 500
 
@@ -351,6 +355,43 @@ class TriageSubmissionView(APIView):
 
             # Broadcast WebSocket event (Member 8) - using correct function
             broadcast_patient_created(submission.id, priority, urgency_score)
+
+            # Send notifications for new patient submissions
+            try:
+                # Notify patient about successful submission
+                NotificationService.create_notification(
+                    user=request.user,
+                    notification_type="triage_status_change",
+                    title="Triage Submission Received",
+                    message=f"Your triage submission has been received and assigned priority {priority}. You will be notified of any status updates.",
+                    metadata={
+                        "submission_id": submission.id,
+                        "priority": priority,
+                        "condition": condition,
+                        "action_type": "submission_created"
+                    }
+                )
+
+                # For critical cases, notify all available staff immediately
+                if priority == 1:
+                    available_staff = User.objects.filter(role__in=["doctor", "nurse", "supervisor"])
+                    NotificationService.create_bulk_notifications(
+                        users=available_staff,
+                        notification_type="critical_alert",
+                        title="CRITICAL: Immediate Attention Required",
+                        message=f"Critical patient submission (ID: {submission.id}) requires immediate medical attention. Condition: {condition}",
+                        metadata={
+                            "submission_id": submission.id,
+                            "patient_id": patient.id,
+                            "priority": priority,
+                            "urgency_score": urgency_score,
+                            "condition": condition,
+                            "alert_type": "critical_submission"
+                        }
+                    )
+            except Exception as notification_error:
+                # Log notification errors but don't fail the submission
+                logger.warning(f"Failed to send notifications for submission {submission.id}: {str(notification_error)}")
 
             # Log successful submission
             logger.info(f"Triage submission {submission.id} created with priority {priority}")

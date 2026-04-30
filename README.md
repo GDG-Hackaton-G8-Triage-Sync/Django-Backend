@@ -53,6 +53,15 @@ Registration accepts patient demographic and profile fields at signup. The follo
 - **Role-Based Access**: Medical staff only (doctors, nurses, admins)
 - **Auto-Reconnection**: Handles connection drops gracefully
 
+### Notification System
+- **Real-Time Notifications**: Instant WebSocket delivery to user-specific channels
+- **Persistent Storage**: Database-backed notification history with read/unread tracking
+- **User Preferences**: Granular opt-out controls per notification type
+- **5 Notification Types**: Triage status changes, priority updates, role changes, critical alerts, system messages
+- **Smart Routing**: Priority-based staff notifications (critical → supervisors/doctors, high → doctors/supervisors, medium → nurses/doctors)
+- **Bulk Notifications**: System-wide alerts for maintenance, emergencies, and queue management
+- **Integration**: Automatic notifications for triage submissions, status updates, staff assignments, and role changes
+
 ### Comprehensive Dashboard
 - **Patient Queue**: Sortable, filterable list with pagination (20 per page, max 100)
 - **Analytics**: System-wide statistics and trends
@@ -273,6 +282,18 @@ Django-Backend/
 │   │   │   │   └── event_service.py      # Event builders
 │   │   │   └── tests.py         # WebSocket tests
 │   │   │
+│   │   ├── notifications/       # Notification system
+│   │   │   ├── models.py        # Notification, NotificationPreference
+│   │   │   ├── views.py         # Notification endpoints
+│   │   │   ├── serializers.py   # Notification serializers
+│   │   │   ├── services/
+│   │   │   │   ├── notification_service.py        # Core notification service
+│   │   │   │   └── system_notification_service.py # System-wide notifications
+│   │   │   ├── management/
+│   │   │   │   └── commands/
+│   │   │   │       └── test_notifications.py      # Test command
+│   │   │   └── tests/           # Notification tests (48 tests)
+│   │   │
 │   │   └── core/                # Shared utilities
 │   │       ├── pagination.py    # Pagination classes
 │   │       ├── response.py      # Response helpers
@@ -386,7 +407,48 @@ Response:
 }
 ```
 
-**4. Submit triage with blood type (for severe bleeding cases):**
+**4. Get user notifications:**
+```bash
+GET /api/v1/notifications/
+Authorization: Bearer <access_token>
+
+Response:
+{
+  "data": [
+    {
+      "id": 1,
+      "notification_type": "triage_status_change",
+      "title": "Your Case is Being Reviewed",
+      "message": "Medical staff are now reviewing your triage submission (ID: 123).",
+      "metadata": {
+        "submission_id": 123,
+        "priority": 2,
+        "condition": "High fever"
+      },
+      "is_read": false,
+      "created_at": "2026-04-30T08:00:00Z",
+      "read_at": null
+    }
+  ]
+}
+```
+
+**5. Mark notification as read:**
+```bash
+PATCH /api/v1/notifications/1/read/
+Authorization: Bearer <access_token>
+
+Response:
+{
+  "data": {
+    "id": 1,
+    "is_read": true,
+    "read_at": "2026-04-30T08:15:00Z"
+  }
+}
+```
+
+**6. Submit triage with blood type (for severe bleeding cases):**
 ```bash
 POST /api/v1/triage/ai/
 Content-Type: application/json
@@ -442,6 +504,11 @@ Response:
 | | `/api/v1/admin/analytics/` | GET | Staff | System analytics |
 | **WebSocket** |
 | | `/ws/triage/events/` | WS | Staff | Real-time events |
+| **Notifications** |
+| | `/api/v1/notifications/` | GET | Yes | List user notifications |
+| | `/api/v1/notifications/{id}/read/` | PATCH | Yes | Mark notification as read |
+| | `/api/v1/notifications/read-all/` | PATCH | Yes | Mark all as read |
+| | `/api/v1/notifications/unread-count/` | GET | Yes | Get unread count |
 
 **For complete API documentation with request/response examples, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md)**
 
@@ -484,10 +551,10 @@ python verify_queue_priority_ordering.py
 
 ### Test Results
 
-- **Total Tests**: 44
-- **Passing**: 44 (100%)
+- **Total Tests**: 92 (44 core + 48 notification)
+- **Passing**: 92 (100%)
 - **Coverage**: 85%+
-- **Test Execution Time**: ~23 seconds
+- **Test Execution Time**: ~350 seconds
 
 ### Test Categories
 
@@ -498,6 +565,11 @@ python verify_queue_priority_ordering.py
 - Patient Endpoints (6 tests)
 - Triage Service (10 tests)
 - WebSocket Events (5 tests)
+- **Notification System (48 tests)**
+  - Integration Tests (14 tests)
+  - Triage Integration (8 tests)
+  - Patient Service Integration (11 tests)
+  - Core Service Tests (15 tests)
 
 ## Deployment
 
@@ -678,6 +750,8 @@ psql -h localhost -U your_user -d triagesync
 - **[AI_SERVICE_USAGE_GUIDE.md](AI_SERVICE_USAGE_GUIDE.md)** - AI service configuration and usage
 - **[QUEUE_PRIORITY_SYSTEM_DOCUMENTATION.md](QUEUE_PRIORITY_SYSTEM_DOCUMENTATION.md)** - Queue ordering details
 - **[TEST_FIXES_SUMMARY.md](TEST_FIXES_SUMMARY.md)** - Testing procedures and fixes
+- **[NOTIFICATION_SYSTEM_INTEGRATION_SUMMARY.md](NOTIFICATION_SYSTEM_INTEGRATION_SUMMARY.md)** - Notification system integration guide
+- **[NOTIFICATION_TESTS_SUMMARY.md](NOTIFICATION_TESTS_SUMMARY.md)** - Notification test results and coverage
 
 ## Contributing
 
@@ -738,6 +812,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ for better healthcare**
 
-**Version**: 1.1.0  
+**Version**: 1.2.0  
 **Last Updated**: April 30, 2026  
 **Status**: Production Ready ✅

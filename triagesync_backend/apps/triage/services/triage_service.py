@@ -19,6 +19,10 @@ from .validation_service import get_fallback_ai_output, validate_ai_output, vali
 from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_critical_alert
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_priority_update
+from triagesync_backend.apps.notifications.services.notification_service import NotificationService
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 
@@ -121,26 +125,69 @@ def safe_infer_priority(symptoms: str) -> dict:
 # Real-time event helpers
 # -------------------------
 def trigger_critical_alert(urgency_score: int, condition: str) -> None:
-    """Log critical alert information (actual broadcast handled by TriageSubmissionView)."""
+    """Log critical alert information and notify relevant staff."""
     # Note: Critical alert WebSocket broadcast is handled by broadcast_patient_created()
     # in TriageSubmissionView after PatientSubmission is created with patient_id
     try:
         import logging
         logger = logging.getLogger("triage.critical")
         logger.warning(f"Critical condition detected: {condition} (urgency: {urgency_score})")
+        
+        # Notify all supervisors and doctors about critical cases
+        supervisors_and_doctors = User.objects.filter(role__in=["supervisor", "doctor"])
+        if supervisors_and_doctors.exists():
+            NotificationService.create_bulk_notifications(
+                users=supervisors_and_doctors,
+                notification_type="critical_alert",
+                title="Critical Patient Alert",
+                message=f"Priority 1 patient detected: {condition} (Urgency: {urgency_score})",
+                metadata={
+                    "urgency_score": urgency_score,
+                    "condition": condition,
+                    "alert_type": "critical_triage"
+                }
+            )
     except Exception:
         # Never let logging failure block the triage response
         pass
 
 
 def trigger_priority_update(priority: int, urgency_score: int, condition: str) -> None:
-    """Broadcast a priority_update WebSocket event whenever priority is set."""
+    """Broadcast a priority_update WebSocket event and notify relevant staff."""
     try:
-        broadcast_priority_update({
-            "priority": priority,
-            "urgency_score": urgency_score,
-            "condition": condition,
-        })
+        # Fix: broadcast_priority_update expects individual parameters, not a dict
+        broadcast_priority_update(patient_id=0, priority=priority, urgency_score=urgency_score)
+        
+        # Notify staff based on priority level
+        if priority <= 2:  # High and Critical priority
+            # Notify all doctors and supervisors for high priority cases
+            staff_to_notify = User.objects.filter(role__in=["doctor", "supervisor"])
+            notification_type = "priority_update"
+            title = f"Priority {priority} Patient Alert"
+            message = f"High priority patient requires attention: {condition} (Priority: {priority})"
+        elif priority == 3:  # Medium priority
+            # Notify available nurses and doctors for medium priority
+            staff_to_notify = User.objects.filter(role__in=["nurse", "doctor"])
+            notification_type = "priority_update"
+            title = f"Priority {priority} Patient"
+            message = f"Medium priority patient: {condition} (Priority: {priority})"
+        else:
+            # For low priority (4-5), no notifications needed
+            staff_to_notify = User.objects.none()
+        
+        if staff_to_notify.exists():
+            NotificationService.create_bulk_notifications(
+                users=staff_to_notify,
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                metadata={
+                    "priority": priority,
+                    "urgency_score": urgency_score,
+                    "condition": condition,
+                    "alert_type": "priority_update"
+                }
+            )
     except Exception:
         pass
 
