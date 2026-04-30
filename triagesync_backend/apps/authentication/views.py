@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.db import transaction
 
 from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer
@@ -159,6 +160,46 @@ class RefreshTokenView(TokenRefreshView):
             return error_response(
                 code="INTERNAL_SERVER_ERROR",
                 message="An unexpected error occurred during token refresh",
+                details={},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class LogoutView(APIView):
+    """
+    POST /api/v1/auth/logout/
+    Blacklist the refresh token to log out the user
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return error_response(
+                    code="INVALID_TOKEN",
+                    message="Refresh token is required",
+                    details={},
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            
+            return Response({
+                "message": "Successfully logged out"
+            }, status=status.HTTP_205_RESET_CONTENT)
+        except TokenError:
+            return error_response(
+                code="INVALID_TOKEN",
+                message="Invalid or expired refresh token",
+                details={},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message="An error occurred during logout",
                 details={},
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

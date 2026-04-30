@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "triagesync_backend.apps.core",
     "triagesync_backend.apps.authentication",
     "triagesync_backend.apps.patients",

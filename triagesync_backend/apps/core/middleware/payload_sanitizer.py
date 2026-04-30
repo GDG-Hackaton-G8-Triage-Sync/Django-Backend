@@ -15,7 +15,7 @@ import json
 import re
 from io import BytesIO
 
-ALLOWED_KEYS = frozenset({"age", "gender", "symptoms"})
+ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description", "blood_type", "photo_name"})
 TRIAGE_PATH_PREFIX = "/api/v1/triage/"
 MAX_SYMPTOMS_LENGTH = 500
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH"})
@@ -75,10 +75,15 @@ class PayloadSanitizerMiddleware:
             sanitized[key] = _strip_controls(value)
 
         symptoms = sanitized.get("symptoms")
+        description = sanitized.get("description")
+        
         if isinstance(symptoms, str) and len(symptoms) > MAX_SYMPTOMS_LENGTH:
             sanitized["symptoms"] = symptoms[:MAX_SYMPTOMS_LENGTH]
+        if isinstance(description, str) and len(description) > MAX_SYMPTOMS_LENGTH:
+            sanitized["description"] = description[:MAX_SYMPTOMS_LENGTH]
 
-        if not sanitized.get("symptoms"):
+        # Require either symptoms or description
+        if not sanitized.get("symptoms") and not sanitized.get("description"):
             request._triage_error = "missing_symptoms"
 
         warnings = []
