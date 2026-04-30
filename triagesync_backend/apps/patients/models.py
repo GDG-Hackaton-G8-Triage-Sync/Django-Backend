@@ -52,6 +52,11 @@ class PatientSubmission(models.Model):
     reason = models.TextField(null=True, blank=True)
     confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     source = models.CharField(max_length=50, null=True, blank=True)
+    
+    # ROUTING AND FILTERING FIELDS (underutilized-features-implementation)
+    requires_immediate_attention = models.BooleanField(default=False)
+    specialist_referral_suggested = models.BooleanField(default=False)
+    critical_keywords = models.JSONField(default=list, blank=True)
 
     # WORKFLOW
     status = models.CharField(
