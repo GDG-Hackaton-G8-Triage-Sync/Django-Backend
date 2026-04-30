@@ -6,6 +6,7 @@ from .views import (
     AdminAnalyticsView,
     UpdatePatientPriorityView,
     VerifyPatientView,
+    LogPatientVitalsView,
 )
 
 urlpatterns = [
@@ -14,6 +15,7 @@ urlpatterns = [
     path("staff/patient/<int:id>/status/", UpdatePatientStatusView.as_view()),
     path("staff/patient/<int:id>/priority/", UpdatePatientPriorityView.as_view()),
     path("staff/patient/<int:id>/verify/", VerifyPatientView.as_view()),
+    path("staff/patient/<int:id>/vitals/", LogPatientVitalsView.as_view()),
 
     # ADMIN
     path("admin/overview/", AdminOverviewView.as_view()),

@@ -43,7 +43,7 @@ class PatientService:
             submission.save()
             
             # Broadcast real-time status change
-            broadcast_status_changed(submission.id, new_status)
+            broadcast_status_changed(submission)
             
             # Send notifications
             cls._send_status_change_notifications(submission, old_status, new_status, staff_user)
@@ -98,9 +98,9 @@ class PatientService:
                     }
                 )
             
-            # Notify supervisors about completed high-priority cases
+            # Notify admins about completed high-priority cases
             if new_status == 'completed' and submission.priority <= 2:
-                supervisors = User.objects.filter(role="supervisor")
+                supervisors = User.objects.filter(role="admin")
                 NotificationService.create_bulk_notifications(
                     users=supervisors,
                     notification_type="system_message",

@@ -6,7 +6,8 @@ from django.db import transaction
 
 from triagesync_backend.apps.authentication.models import User
 from triagesync_backend.apps.authentication.permissions import IsAdmin
-from triagesync_backend.apps.patients.models import PatientSubmission
+from triagesync_backend.apps.notifications.services.system_notification_service import SystemNotificationService
+from triagesync_backend.apps.patients.models import Patient, PatientSubmission
 from triagesync_backend.apps.core.response import error_response
 from .serializers import AdminUserSerializer, RoleUpdateSerializer
 
@@ -55,11 +56,34 @@ class AdminUserRoleUpdateView(APIView):
         try:
             with transaction.atomic():
                 user = User.objects.select_for_update().get(id=user_id)
+                old_role = user.role
                 user.role = serializer.validated_data['role']
                 user.save()
+
+                if user.role == User.Roles.PATIENT:
+                    Patient.objects.get_or_create(
+                        user=user,
+                        defaults={
+                            "name": user.first_name or user.username,
+                            "age": 18,
+                            "gender": "other",
+                            "blood_type": "O+",
+                        },
+                    )
+
+                if old_role != user.role:
+                    try:
+                        SystemNotificationService.send_role_change_notification(
+                            user=user,
+                            old_role=old_role,
+                            new_role=user.role,
+                            changed_by=request.user,
+                        )
+                    except Exception:
+                        pass
                 
                 return Response(
-                    {"message": "Role updated successfully"},
+                    AdminUserSerializer(user).data,
                     status=status.HTTP_200_OK
                 )
         except User.DoesNotExist:
@@ -109,4 +133,34 @@ class AdminSubmissionDeleteView(APIView):
                 code="INTERNAL_SERVER_ERROR",
                 message=str(e),
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class AdminUserDeleteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def delete(self, request, user_id):
+        if request.user.id == user_id:
+            return error_response(
+                code="VALIDATION_ERROR",
+                message="You cannot delete your own admin account",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                user = User.objects.select_for_update().get(id=user_id)
+                user.delete()
+                return Response({"message": "User deleted successfully"}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return error_response(
+                code="NOT_FOUND",
+                message="User not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

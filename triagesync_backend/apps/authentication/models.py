@@ -4,6 +4,7 @@ from django.db import models
 class User(AbstractUser):
     class Roles(models.TextChoices):
         PATIENT = "patient", "Patient"
+        STAFF = "staff", "Staff"
         NURSE = "nurse", "Nurse"
         DOCTOR = "doctor", "Doctor"
         ADMIN = "admin", "Admin"
@@ -25,6 +26,9 @@ class User(AbstractUser):
 
     def is_patient(self):
         return self.role == self.Roles.PATIENT
+
+    def is_medical_staff(self):
+        return self.role in {self.Roles.STAFF, self.Roles.NURSE, self.Roles.DOCTOR}
 
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"

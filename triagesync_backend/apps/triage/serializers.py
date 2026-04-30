@@ -17,6 +17,9 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
     """
     description = serializers.CharField(source="symptoms")
     created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S.%fZ')
+    reasoning = serializers.CharField(source="reason", read_only=True)
+    photo_url = serializers.SerializerMethodField()
+    confidence = serializers.FloatField(read_only=True)
     
     class Meta:
         model = PatientSubmission
@@ -26,10 +29,26 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
             "priority",
             "urgency_score", 
             "condition",
+            "category",
             "status",
+            "is_critical",
             "photo_name",
+            "photo_url",
+            "explanation",
+            "recommended_action",
+            "reason",
+            "reasoning",
+            "confidence",
+            "source",
             "created_at"
         )
+
+    def get_photo_url(self, obj):
+        if not obj.photo:
+            return None
+        request = self.context.get("request")
+        url = obj.photo.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class TriageAIResponseSerializer(serializers.Serializer):

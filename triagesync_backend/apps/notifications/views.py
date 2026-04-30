@@ -2,8 +2,13 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from triagesync_backend.apps.notifications.models import Notification
-from triagesync_backend.apps.notifications.serializers import NotificationSerializer
+from rest_framework.views import APIView
+
+from triagesync_backend.apps.notifications.models import Notification, NotificationPreference
+from triagesync_backend.apps.notifications.serializers import (
+    NotificationPreferenceSerializer,
+    NotificationSerializer,
+)
 from triagesync_backend.apps.core.response import success_response
 from django.utils import timezone
 
@@ -51,3 +56,20 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def unread_count(self, request):
         count = self.get_queryset().filter(is_read=False).count()
         return Response({"data": {"unread_count": count}})
+
+
+class NotificationPreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        preference, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        serializer = NotificationPreferenceSerializer(preference)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        preference, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        serializer = NotificationPreferenceSerializer(preference, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)

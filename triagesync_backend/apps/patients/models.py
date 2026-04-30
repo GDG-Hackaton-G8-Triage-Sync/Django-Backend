@@ -39,11 +39,19 @@ class PatientSubmission(models.Model):
     # INPUT
     symptoms = models.TextField()
     photo_name = models.CharField(max_length=255, null=True, blank=True)
+    photo = models.FileField(upload_to="triage_photos/", null=True, blank=True)
 
     # TRIAGE OUTPUT
     priority = models.IntegerField(null=True, blank=True)
     urgency_score = models.IntegerField(null=True, blank=True)
     condition = models.CharField(max_length=255, null=True, blank=True)
+    category = models.CharField(max_length=100, null=True, blank=True)
+    is_critical = models.BooleanField(default=False)
+    explanation = models.JSONField(default=list, blank=True)
+    recommended_action = models.TextField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=50, null=True, blank=True)
 
     # WORKFLOW
     status = models.CharField(
@@ -68,3 +76,33 @@ class PatientSubmission(models.Model):
 
     def __str__(self) -> str:
         return f"Submission {self.id} by {self.patient.name}"
+
+
+class VitalsLog(models.Model):
+    submission = models.ForeignKey(
+        PatientSubmission,
+        on_delete=models.CASCADE,
+        related_name="vitals",
+    )
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recorded_vitals",
+    )
+    temperature_c = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    heart_rate = models.PositiveSmallIntegerField(null=True, blank=True)
+    systolic_bp = models.PositiveSmallIntegerField(null=True, blank=True)
+    diastolic_bp = models.PositiveSmallIntegerField(null=True, blank=True)
+    respiratory_rate = models.PositiveSmallIntegerField(null=True, blank=True)
+    oxygen_saturation = models.PositiveSmallIntegerField(null=True, blank=True)
+    pain_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Vitals for submission {self.submission_id} at {self.created_at.isoformat()}"

@@ -26,11 +26,11 @@ class IsPatient(BasePermission):
 
 
 class IsMedicalStaff(BasePermission):
-    """Permission class for medical staff (doctor or nurse) endpoints."""
+    """Permission class for medical staff (staff, doctor, or nurse) endpoints."""
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            (request.user.is_doctor() or request.user.is_nurse())
+            request.user.is_medical_staff()
         )
 
 
@@ -44,5 +44,5 @@ class IsStaffOrAdmin(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            (request.user.is_doctor() or request.user.is_nurse() or request.user.is_admin())
+            (request.user.is_medical_staff() or request.user.is_admin())
         )

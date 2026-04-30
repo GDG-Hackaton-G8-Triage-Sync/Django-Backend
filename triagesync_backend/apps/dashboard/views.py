@@ -1,18 +1,23 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from triagesync_backend.apps.authentication.permissions import IsMedicalStaff
+from triagesync_backend.apps.authentication.permissions import IsMedicalStaff, IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, validation_error_response, not_found_response
 from .serializers import DashboardPatientSerializer
-from .services.dashboard_service import get_patient_queue
 from triagesync_backend.apps.patients.models import PatientSubmission
+from triagesync_backend.apps.patients.serializers import VitalsLogSerializer
+from .services.dashboard_service import get_patient_queue
 from .services.dashboard_service import update_priority, verify_patient
 from django.utils import timezone
 from .services.dashboard_service import get_admin_analytics
 from .services.dashboard_service import get_admin_overview
 from .services.dashboard_service import update_patient_status
 from django.core.exceptions import ValidationError
+
+
+def _serialize_submission(request, submission):
+    return DashboardPatientSerializer(submission, context={"request": request}).data
 
 
 class StaffPatientQueueView(APIView):
@@ -34,7 +39,7 @@ class StaffPatientQueueView(APIView):
         paginator = self.pagination_class()
         paginated_patients = paginator.paginate_queryset(patients, request)
         
-        serializer = DashboardPatientSerializer(paginated_patients, many=True)
+        serializer = DashboardPatientSerializer(paginated_patients, many=True, context={"request": request})
 
         return paginator.get_paginated_response(serializer.data)
 
@@ -57,7 +62,7 @@ class UpdatePatientStatusView(APIView):
             if not patient:
                 return not_found_response("Patient not found")
 
-            return Response({"message": "Status updated successfully"})
+            return Response(_serialize_submission(request, patient))
             
         except (ValueError, ValidationError) as e:
             return error_response(
@@ -70,7 +75,7 @@ class AdminOverviewView(APIView):
     """
     GET /api/v1/admin/overview/
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def get(self, request):
         data = get_admin_overview()
@@ -80,7 +85,7 @@ class AdminAnalyticsView(APIView):
     """
     GET /api/v1/admin/analytics/
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def get(self, request):
         data = get_admin_analytics()
@@ -115,7 +120,8 @@ class UpdatePatientPriorityView(APIView):
             # 👉 call service instead of writing logic here
             update_priority(patient, priority)
 
-            return Response({"message": "Priority updated successfully"})
+            patient.refresh_from_db()
+            return Response(_serialize_submission(request, patient))
 
         except PatientSubmission.DoesNotExist:
             return not_found_response("Patient not found")
@@ -143,7 +149,31 @@ class VerifyPatientView(APIView):
                     status_code=400
                 )
 
-            return Response({"message": "Patient verified successfully"})
+            patient.refresh_from_db()
+            return Response(_serialize_submission(request, patient))
 
         except PatientSubmission.DoesNotExist:
             return not_found_response("Patient not found")
+
+
+class LogPatientVitalsView(APIView):
+    permission_classes = [IsAuthenticated, IsMedicalStaff]
+
+    def post(self, request, id):
+        try:
+            submission = PatientSubmission.objects.select_related("patient__user").prefetch_related("vitals").get(id=id)
+        except PatientSubmission.DoesNotExist:
+            return not_found_response("Patient not found")
+
+        serializer = VitalsLogSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                code="VALIDATION_ERROR",
+                message="Invalid vitals payload",
+                details=serializer.errors,
+                status_code=400,
+            )
+
+        serializer.save(submission=submission, recorded_by=request.user)
+        submission.refresh_from_db()
+        return Response(_serialize_submission(request, submission), status=201)

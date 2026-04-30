@@ -17,8 +17,6 @@ from .ai_service import infer_priority
 from .ai_service import get_triage_recommendation
 from .validation_service import get_fallback_ai_output, validate_ai_output, validate_symptoms
 from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
-from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_critical_alert
-from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_priority_update
 from triagesync_backend.apps.notifications.services.notification_service import NotificationService
 from django.contrib.auth import get_user_model
 
@@ -133,11 +131,10 @@ def trigger_critical_alert(urgency_score: int, condition: str) -> None:
         logger = logging.getLogger("triage.critical")
         logger.warning(f"Critical condition detected: {condition} (urgency: {urgency_score})")
         
-        # Notify all supervisors and doctors about critical cases
-        supervisors_and_doctors = User.objects.filter(role__in=["supervisor", "doctor"])
-        if supervisors_and_doctors.exists():
+        critical_staff = User.objects.filter(role__in=["admin", "doctor", "nurse", "staff"])
+        if critical_staff.exists():
             NotificationService.create_bulk_notifications(
-                users=supervisors_and_doctors,
+                users=critical_staff,
                 notification_type="critical_alert",
                 title="Critical Patient Alert",
                 message=f"Priority 1 patient detected: {condition} (Urgency: {urgency_score})",
@@ -155,19 +152,14 @@ def trigger_critical_alert(urgency_score: int, condition: str) -> None:
 def trigger_priority_update(priority: int, urgency_score: int, condition: str) -> None:
     """Broadcast a priority_update WebSocket event and notify relevant staff."""
     try:
-        # Fix: broadcast_priority_update expects individual parameters, not a dict
-        broadcast_priority_update(patient_id=0, priority=priority, urgency_score=urgency_score)
-        
         # Notify staff based on priority level
         if priority <= 2:  # High and Critical priority
-            # Notify all doctors and supervisors for high priority cases
-            staff_to_notify = User.objects.filter(role__in=["doctor", "supervisor"])
+            staff_to_notify = User.objects.filter(role__in=["admin", "doctor", "nurse", "staff"])
             notification_type = "priority_update"
             title = f"Priority {priority} Patient Alert"
             message = f"High priority patient requires attention: {condition} (Priority: {priority})"
         elif priority == 3:  # Medium priority
-            # Notify available nurses and doctors for medium priority
-            staff_to_notify = User.objects.filter(role__in=["nurse", "doctor"])
+            staff_to_notify = User.objects.filter(role__in=["doctor", "nurse", "staff"])
             notification_type = "priority_update"
             title = f"Priority {priority} Patient"
             message = f"Medium priority patient: {condition} (Priority: {priority})"

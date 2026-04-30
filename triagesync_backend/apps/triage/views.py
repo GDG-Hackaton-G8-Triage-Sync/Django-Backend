@@ -5,6 +5,7 @@ import json
 from .services.ai_service import get_triage_recommendation
 from .serializers import TriageAIResponseSerializer
 from .serializers import PDFUploadSerializer
+from .serializers import TriageSubmissionSerializer
 from rest_framework import status
 
 from rest_framework.response import Response
@@ -20,15 +21,17 @@ from .services.ai_service import (
     call_gemini_api,
     normalize_ai_response,
     normalize_age,
+    normalize_blood_type,
     normalize_gender,
 )
 from PyPDF2 import PdfReader
 
 from .services.triage_service import evaluate_triage
 # from .serializers import TriageInputSerializer  # Removed: does not exist
-from triagesync_backend.apps.authentication.permissions import IsDoctor, IsPatient
+from triagesync_backend.apps.authentication.permissions import IsDoctor, IsPatient, IsStaffOrAdmin
 from triagesync_backend.apps.core.response import success_response, error_response
-from triagesync_backend.apps.core.validators import validate_description_length
+from triagesync_backend.apps.core.validators import validate_description_length, validate_photo_name
+from triagesync_backend.apps.dashboard.services.dashboard_service import get_waiting_analytics
 
 # Required imports for TriageSubmissionView
 from triagesync_backend.apps.patients.models import PatientSubmission, Patient
@@ -275,6 +278,96 @@ class TriageEvaluateView(APIView):
         return Response(result)
 
 
+def _build_submission_triage(description, patient, submitted_blood_type=None):
+    """
+    Resolve triage with demographics when available, then fall back to the
+    existing rule-based evaluation flow if AI is unavailable.
+    """
+    result = get_triage_recommendation(
+        description,
+        age=getattr(patient, "age", None),
+        gender=getattr(patient, "gender", None),
+        blood_type=submitted_blood_type or getattr(patient, "blood_type", None),
+    )
+
+    if isinstance(result, dict) and not result.get("error"):
+        urgency_score = result.get("urgency_score", 50)
+        priority = result.get("priority_level")
+        if priority is None:
+            if urgency_score >= 80:
+                priority = 1
+            elif urgency_score >= 60:
+                priority = 2
+            elif urgency_score >= 40:
+                priority = 3
+            elif urgency_score >= 20:
+                priority = 4
+            else:
+                priority = 5
+
+        return {
+            "priority": priority,
+            "urgency_score": urgency_score,
+            "condition": result.get("condition", "Unknown"),
+            "category": result.get("category", "General"),
+            "is_critical": result.get("is_critical", priority == 1),
+            "explanation": result.get("explanation", []),
+            "recommended_action": result.get("recommended_action"),
+            "reason": result.get("reason"),
+            "confidence": round(float(urgency_score or 0) / 100, 2),
+            "source": "ai",
+        }
+
+    fallback = evaluate_triage(description)
+    fallback_data = fallback.get("data", {})
+    triage_result = fallback_data.get("triage_result", {})
+    ai_contract = fallback_data.get("ai_contract", {})
+
+    urgency_score = triage_result.get("urgency_score", 50)
+    return {
+        "priority": triage_result.get("priority", 3),
+        "urgency_score": urgency_score,
+        "condition": ai_contract.get("condition", "Unknown"),
+        "category": ai_contract.get("category", "General"),
+        "is_critical": triage_result.get("is_critical", False),
+        "explanation": ai_contract.get("explanation", []),
+        "recommended_action": ai_contract.get("recommended_action"),
+        "reason": ai_contract.get("reason"),
+        "confidence": round(float(urgency_score or 0) / 100, 2),
+        "source": fallback_data.get("source", "fallback"),
+    }
+
+
+class TriageWaitingAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            submission = PatientSubmission.objects.select_related("patient__user").get(id=id)
+        except PatientSubmission.DoesNotExist:
+            return error_response(
+                code="NOT_FOUND",
+                message="Submission not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.user.is_patient() and submission.patient.user_id != request.user.id:
+            return error_response(
+                code="FORBIDDEN",
+                message="You do not have access to this submission",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not request.user.is_patient() and not (request.user.is_admin() or request.user.is_medical_staff()):
+            return error_response(
+                code="FORBIDDEN",
+                message="You do not have access to this resource",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        return Response(get_waiting_analytics(submission))
+
+
 # ============================================================================
 # MAIN TRIAGE SUBMISSION ENDPOINT (API Contract Compliant)
 # POST /api/v1/triage/
@@ -283,134 +376,137 @@ class TriageEvaluateView(APIView):
 class TriageSubmissionView(APIView):
     """
     Main triage submission endpoint per API contract.
-    
-    POST /api/v1/triage/
-    Request: {"description": "Chest pain..."}
-    Response: Direct TriageItem shape (no envelope)
     """
+
     permission_classes = [IsAuthenticated, IsPatient]
 
     def post(self, request):
         logger = logging.getLogger("triage.submission")
-        
-        # Get description from request (API contract field name)
         description = request.data.get("description")
         photo_name = request.data.get("photo_name")
+        uploaded_photo = request.FILES.get("photo")
+        blood_type = request.data.get("blood_type")
 
-        # Log triage submission attempt
-        logger.info(f"Triage submission from user {request.user.id}")
+        logger.info("Triage submission from user %s", request.user.id)
 
-        # Validate input using centralized validator
         if not description:
-            return Response({
-                "code": "VALIDATION_ERROR",
-                "message": "Description is required"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"code": "VALIDATION_ERROR", "message": "Description is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             validate_description_length(description)
+            if photo_name:
+                validate_photo_name(photo_name)
         except ValidationError as e:
-            return Response({
-                "code": "VALIDATION_ERROR",
-                "message": str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"code": "VALIDATION_ERROR", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
-            # Get or create Patient profile for user
             try:
                 patient = request.user.patient_profile
             except Patient.DoesNotExist:
                 patient = Patient.objects.create(
                     user=request.user,
-                    name=request.user.username
+                    name=request.user.username,
                 )
 
-            # Call Member 6's triage service (complete logic)
-            try:
-                triage_result = evaluate_triage(description)
-            except Exception as triage_error:
-                logger.error(f"Triage evaluation failed for user {request.user.id}: {str(triage_error)}")
-                return Response({
-                    "code": "TRIAGE_ERROR",
-                    "message": "Triage evaluation failed. Please try again later."
-                }, status=status.HTTP_502_BAD_GATEWAY)
+            normalized_blood_type = normalize_blood_type(blood_type) if blood_type else None
+            if blood_type and not normalized_blood_type:
+                return Response(
+                    {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Invalid blood type. Use one of: A+, A-, B+, B-, AB+, AB-, O+, O-.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            # Extract data from Member 6's response format
-            triage_data = triage_result.get("data", {}).get("triage_result", {})
-            priority = triage_data.get("priority", 3)
-            urgency_score = triage_data.get("urgency_score", 50)
-            condition = triage_data.get("condition", "Unknown")
-            triage_status = triage_data.get("status", "waiting")
+            if normalized_blood_type and patient.blood_type != normalized_blood_type:
+                patient.blood_type = normalized_blood_type
+                patient.save(update_fields=["blood_type"])
 
-            # Save to database (Member 7's model)
+            triage_payload = _build_submission_triage(description, patient, normalized_blood_type)
+            if uploaded_photo and not photo_name:
+                photo_name = uploaded_photo.name
+
             submission = PatientSubmission.objects.create(
                 patient=patient,
-                symptoms=description,  # Store in symptoms field
+                symptoms=description,
                 photo_name=photo_name,
-                priority=priority,
-                urgency_score=urgency_score,
-                condition=condition,
-                status=triage_status
+                photo=uploaded_photo,
+                priority=triage_payload["priority"],
+                urgency_score=triage_payload["urgency_score"],
+                condition=triage_payload["condition"],
+                category=triage_payload["category"],
+                status=PatientSubmission.Status.WAITING,
+                is_critical=triage_payload["is_critical"],
+                explanation=triage_payload["explanation"],
+                recommended_action=triage_payload["recommended_action"],
+                reason=triage_payload["reason"],
+                confidence=triage_payload["confidence"],
+                source=triage_payload["source"],
             )
 
-            # Broadcast WebSocket event (Member 8) - using correct function
-            broadcast_patient_created(submission.id, priority, urgency_score)
+            broadcast_patient_created(submission)
 
-            # Send notifications for new patient submissions
             try:
-                # Notify patient about successful submission
                 NotificationService.create_notification(
                     user=request.user,
                     notification_type="triage_status_change",
                     title="Triage Submission Received",
-                    message=f"Your triage submission has been received and assigned priority {priority}. You will be notified of any status updates.",
+                    message=(
+                        f"Your triage submission has been received and assigned "
+                        f"priority {submission.priority}. You will be notified of any status updates."
+                    ),
                     metadata={
                         "submission_id": submission.id,
-                        "priority": priority,
-                        "condition": condition,
-                        "action_type": "submission_created"
-                    }
+                        "priority": submission.priority,
+                        "condition": submission.condition,
+                        "action_type": "submission_created",
+                    },
                 )
 
-                # For critical cases, notify all available staff immediately
-                if priority == 1:
-                    available_staff = User.objects.filter(role__in=["doctor", "nurse", "supervisor"])
+                if submission.priority == 1:
+                    available_staff = User.objects.filter(role__in=["admin", "doctor", "nurse", "staff"])
                     NotificationService.create_bulk_notifications(
                         users=available_staff,
                         notification_type="critical_alert",
                         title="CRITICAL: Immediate Attention Required",
-                        message=f"Critical patient submission (ID: {submission.id}) requires immediate medical attention. Condition: {condition}",
+                        message=(
+                            f"Critical patient submission (ID: {submission.id}) requires "
+                            f"immediate medical attention. Condition: {submission.condition}"
+                        ),
                         metadata={
                             "submission_id": submission.id,
                             "patient_id": patient.id,
-                            "priority": priority,
-                            "urgency_score": urgency_score,
-                            "condition": condition,
-                            "alert_type": "critical_submission"
-                        }
+                            "priority": submission.priority,
+                            "urgency_score": submission.urgency_score,
+                            "condition": submission.condition,
+                            "alert_type": "critical_submission",
+                        },
                     )
             except Exception as notification_error:
-                # Log notification errors but don't fail the submission
-                logger.warning(f"Failed to send notifications for submission {submission.id}: {str(notification_error)}")
+                logger.warning(
+                    "Failed to send notifications for submission %s: %s",
+                    submission.id,
+                    notification_error,
+                )
 
-            # Log successful submission
-            logger.info(f"Triage submission {submission.id} created with priority {priority}")
+            logger.info(
+                "Triage submission %s created with priority %s",
+                submission.id,
+                submission.priority,
+            )
 
-            # Return direct TriageItem shape (no envelope per API contract)
-            return Response({
-                "id": submission.id,
-                "description": description,  # API field name
-                "priority": priority,
-                "urgency_score": urgency_score,
-                "condition": condition,
-                "status": triage_status,
-                "photo_name": photo_name,
-                "created_at": submission.created_at.isoformat()
-            }, status=status.HTTP_201_CREATED)
+            serializer = TriageSubmissionSerializer(submission, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Triage submission failed: {str(e)}")
-            return Response({
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "Triage processing failed"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error("Triage submission failed: %s", str(e))
+            return Response(
+                {"code": "INTERNAL_SERVER_ERROR", "message": "Triage processing failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

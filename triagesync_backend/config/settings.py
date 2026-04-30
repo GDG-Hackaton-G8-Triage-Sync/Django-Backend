@@ -10,11 +10,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-print("CWD:", os.getcwd())
-print("BASE_DIR:", BASE_DIR)
-print("ENV FILE EXISTS:", os.path.exists(BASE_DIR / ".env"))
-print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
-
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -126,6 +121,8 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "authentication.User"

@@ -57,7 +57,7 @@ class SystemNotificationService:
         """
         try:
             if priority_roles is None:
-                priority_roles = ["supervisor", "doctor"]
+                priority_roles = ["admin", "doctor", "staff"]
             
             # Send to priority roles first
             priority_users = User.objects.filter(role__in=priority_roles)
@@ -147,7 +147,7 @@ class SystemNotificationService:
             threshold: Queue size threshold that was exceeded
         """
         try:
-            supervisors = User.objects.filter(role="supervisor")
+            supervisors = User.objects.filter(role="admin")
             
             NotificationService.create_bulk_notifications(
                 users=supervisors,
@@ -192,8 +192,8 @@ class SystemNotificationService:
                 }
             )
             
-            # Notify supervisors about role changes
-            supervisors = User.objects.filter(role="supervisor").exclude(id=user.id)
+            # Notify admins about role changes
+            supervisors = User.objects.filter(role="admin").exclude(id=user.id)
             if supervisors.exists():
                 NotificationService.create_bulk_notifications(
                     users=supervisors,

@@ -24,7 +24,7 @@ class RegisterView(APIView):
             missing_fields = []
             if request.data.get('role') == 'patient':
                 # Required at registration for patient role
-                for field in ['name', 'email', 'password', 'role', 'age']:
+                for field in ['name', 'email', 'password', 'password2', 'role', 'age', 'gender', 'blood_type']:
                     if not request.data.get(field) and request.data.get(field) != 0:
                         missing_fields.append(field)
             details = serializer.errors
@@ -114,6 +114,10 @@ class RefreshTokenView(TokenRefreshView):
         Override post method to wrap simplejwt's token refresh logic
         with standardized error handling.
         """
+        if 'refresh' not in request.data and request.data.get('refresh_token'):
+            request._full_data = request.data.copy()
+            request._full_data['refresh'] = request.data.get('refresh_token')
+
         # Check if refresh token is provided
         if 'refresh' not in request.data or not request.data.get('refresh'):
             return error_response(
@@ -125,7 +129,15 @@ class RefreshTokenView(TokenRefreshView):
         
         try:
             # Call parent's post method to leverage simplejwt's token refresh logic
-            return super().post(request, *args, **kwargs)
+            response = super().post(request, *args, **kwargs)
+            access_token = response.data.get("access")
+            refresh_token = response.data.get("refresh")
+            response.data = {
+                "access_token": access_token,
+                "access": access_token,
+                **({"refresh_token": refresh_token} if refresh_token else {}),
+            }
+            return response
         except InvalidToken as e:
             # Handle invalid or expired refresh tokens
             return error_response(
@@ -196,9 +208,9 @@ class GenericProfileView(APIView):
                 # Return User model for staff
                 return Response({
                     'id': user.id,
-                    'name': user.first_name,
+                    'name': user.first_name or user.username,
                     'email': user.email,
-                    'role': 'staff',  # Normalize nurse/doctor to 'staff'
+                    'role': user.role if user.is_admin() else 'staff',
                     'username': user.username,
                 }, status=status.HTTP_200_OK)
                 
@@ -270,9 +282,9 @@ class GenericProfileView(APIView):
                     # Return updated profile
                     return Response({
                         'id': user.id,
-                        'name': user.first_name,
+                        'name': user.first_name or user.username,
                         'email': user.email,
-                        'role': user.role,
+                        'role': user.role if user.is_admin() else 'staff',
                         'username': user.username,
                     }, status=status.HTTP_200_OK)
                     

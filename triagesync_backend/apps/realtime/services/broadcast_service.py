@@ -1,10 +1,11 @@
 """
 Broadcast service — sends events to all connected WebSocket clients in the triage group.
-Other members (M3, M6) import and call these functions after their logic completes.
 """
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+
+from triagesync_backend.apps.patients.models import PatientSubmission
 
 from .event_service import (
     build_critical_alert_event,
@@ -17,7 +18,6 @@ TRIAGE_GROUP = "triage_events"
 
 
 def _send(payload: dict) -> None:
-    """Internal helper — pushes a payload to the triage_events channel group."""
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
         TRIAGE_GROUP,
@@ -25,29 +25,39 @@ def _send(payload: dict) -> None:
     )
 
 
-def broadcast_patient_created(patient_id: int, priority: int, urgency_score: int) -> None:
-    """Call this when a new patient submission is saved."""
-    payload = build_patient_created_event(patient_id, priority, urgency_score)
+def _resolve_submission(submission_or_id):
+    if isinstance(submission_or_id, PatientSubmission):
+        return submission_or_id
+
+    return PatientSubmission.objects.select_related(
+        "patient__user",
+        "verified_by_user",
+    ).prefetch_related("vitals").get(id=submission_or_id)
+
+
+def broadcast_patient_created(submission_or_id, priority=None, urgency_score=None) -> None:
+    submission = _resolve_submission(submission_or_id)
+    payload = build_patient_created_event(submission)
     _send(payload)
-    if priority == 1:
-        broadcast_critical_alert(patient_id)
+    if (submission.priority or priority) == 1:
+        broadcast_critical_alert(submission)
 
 
-def broadcast_priority_update(patient_id: int, priority: int, urgency_score: int) -> None:
-    """Call this when triage logic updates a patient's priority."""
-    payload = build_priority_update_event(patient_id, priority, urgency_score)
+def broadcast_priority_update(submission_or_id, priority=None, urgency_score=None) -> None:
+    submission = _resolve_submission(submission_or_id)
+    payload = build_priority_update_event(submission)
     _send(payload)
-    if priority == 1:
-        broadcast_critical_alert(patient_id)
+    if (submission.priority or priority) == 1:
+        broadcast_critical_alert(submission)
 
 
-def broadcast_critical_alert(patient_id: int) -> None:
-    """Call this directly for priority-1 critical cases."""
-    payload = build_critical_alert_event(patient_id)
+def broadcast_critical_alert(submission_or_id) -> None:
+    submission = _resolve_submission(submission_or_id)
+    payload = build_critical_alert_event(submission)
     _send(payload)
 
 
-def broadcast_status_changed(patient_id: int, status: str) -> None:
-    """Call this when staff changes a patient's status."""
-    payload = build_status_changed_event(patient_id, status)
+def broadcast_status_changed(submission_or_id, status=None) -> None:
+    submission = _resolve_submission(submission_or_id)
+    payload = build_status_changed_event(submission)
     _send(payload)

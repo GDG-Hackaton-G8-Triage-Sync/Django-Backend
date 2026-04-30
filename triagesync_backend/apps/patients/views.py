@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
 from triagesync_backend.apps.authentication.permissions import IsPatient
+from triagesync_backend.apps.authentication.permissions import IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, not_found_response
 from .models import Patient, PatientSubmission
@@ -112,7 +113,7 @@ class PatientHistoryView(APIView):
             }, status=status.HTTP_200_OK)
         
         # Get all submissions for this patient, ordered by most recent first
-        submissions = PatientSubmission.objects.filter(
+        submissions = PatientSubmission.objects.select_related("patient__user", "verified_by_user").prefetch_related("vitals").filter(
             patient=patient
         ).order_by('-created_at')
         
@@ -121,7 +122,7 @@ class PatientHistoryView(APIView):
         paginated_submissions = paginator.paginate_queryset(submissions, request)
         
         # Use PatientSubmissionSerializer for patient-facing history
-        serializer = PatientSubmissionSerializer(paginated_submissions, many=True)
+        serializer = PatientSubmissionSerializer(paginated_submissions, many=True, context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -150,7 +151,7 @@ class PatientSubmissionDetailView(APIView):
             return not_found_response("Submission not found")
         
         # Use PatientSubmissionSerializer for patient-facing detail
-        serializer = PatientSubmissionSerializer(submission)
+        serializer = PatientSubmissionSerializer(submission, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -183,19 +184,10 @@ class PatientCurrentSessionView(APIView):
                 "current_submission": None,
                 "message": "No active session"
             }, status=status.HTTP_200_OK)
-        
+
+        serializer = PatientSubmissionSerializer(active_submission, context={"request": request})
         return Response({
-            "current_submission": {
-                "id": active_submission.id,
-                "symptoms": active_submission.symptoms,
-                "priority": active_submission.priority,
-                "urgency_score": active_submission.urgency_score,
-                "condition": active_submission.condition,
-                "status": active_submission.status,
-                "photo_name": active_submission.photo_name,
-                "created_at": active_submission.created_at.isoformat(),
-                "processed_at": active_submission.processed_at.isoformat() if active_submission.processed_at else None,
-            },
+            "current_submission": serializer.data,
             "message": "Active session found"
         }, status=status.HTTP_200_OK)
 
@@ -232,6 +224,12 @@ class TriageSubmissionsHistoryView(APIView):
             except Patient.DoesNotExist:
                 return Response([], status=status.HTTP_200_OK)
         else:
+            if not (user.is_admin() or user.is_medical_staff()):
+                return error_response(
+                    code="FORBIDDEN",
+                    message="You do not have access to these submissions",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
             # Staff can see all submissions or filter by email
             email = request.query_params.get('email', None)
             
@@ -248,5 +246,9 @@ class TriageSubmissionsHistoryView(APIView):
                 submissions = PatientSubmission.objects.all()
         
         # Serialize and return as direct array
-        serializer = TriageSubmissionHistorySerializer(submissions, many=True)
+        serializer = TriageSubmissionHistorySerializer(
+            submissions.select_related("patient__user").order_by("-created_at"),
+            many=True,
+            context={"request": request},
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)

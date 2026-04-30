@@ -27,7 +27,7 @@ class RoleUpdateSerializer(serializers.Serializer):
     Requirements: 4.2, 4.3, 4.4, 4.5
     """
     role = serializers.ChoiceField(
-        choices=['patient', 'nurse', 'doctor', 'admin', 'staff'],
+        choices=[choice for choice, _ in User.Roles.choices],
         required=True,
         error_messages={
             'required': 'Role field is required',
