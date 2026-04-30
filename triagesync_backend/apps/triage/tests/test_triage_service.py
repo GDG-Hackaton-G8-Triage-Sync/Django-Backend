@@ -325,7 +325,7 @@ class EvaluateTriageIntegrationTests(TestCase):
 
     @patch("triagesync_backend.apps.triage.services.triage_service.trigger_critical_alert")
     @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
-    @patch("triagesync_backend.apps.triage.services.triage_service.ai_service.infer_priority",
+    @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority",
         return_value={"priority": 3, "urgency_score": 50, "condition": "Unknown"})
     def test_fallback_ai_output_used_on_failure(self, mock_ai, mock_update, mock_alert):
         response = evaluate_triage("some vague complaint")

@@ -50,9 +50,10 @@ Endpoints are protected by Role-Based Access Control.
 | Role | Scope |
 | :--- | :--- |
 | `patient` | Access to own medical history, profile, and triage submission. |
-| `nurse` | Staff access: Queue management, vitals logging, priority updates. |
-| `doctor` | Full staff access + Advanced medical oversight. |
-| `admin` | Global access: User management, role assignment, system-wide analytics. |
+| `staff` | Generic staff access: View queue and patient details. |
+| `nurse` | Clinical staff: Queue management, vitals logging, priority updates. |
+| `doctor` | Medical oversight: Full staff access + Advanced clinical decision making. |
+| `admin` | System administration: User management, role assignment, system-wide analytics. |
 
 ---
 
@@ -103,7 +104,7 @@ Registers a new user. For the `patient` role, demographic fields are mandatory.
     "password": "securepassword123"
 }
 ```
-*Note: `identifier` can be username or email.*
+*Note: The login endpoint is flexible and accepts `identifier`, `email`, or `username` as the key for the user identity. It automatically detects if an email address or username is provided.*
 
 ### Token Refresh
 `POST /auth/refresh/`
@@ -122,7 +123,7 @@ Registers a new user. For the `patient` role, demographic fields are mandatory.
 ### Get/Update Profile
 `GET /api/v1/profile/` | `PATCH /api/v1/profile/`
 
-A generic endpoint to manage the authenticated user's profile.
+A generic endpoint to manage the authenticated user's profile. Mutations return the fully updated profile object.
 
 **Response (Patient)**:
 ```json
@@ -148,7 +149,7 @@ A generic endpoint to manage the authenticated user's profile.
 ### Submit Triage Request
 `POST /triage/`
 
-The primary endpoint for submitting symptoms. Supports AI analysis and image uploads.
+The primary endpoint for submitting symptoms. Supports AI analysis and image uploads. Returns the created `TriageItem`.
 
 **Request (Multipart Form-Data)**:
 - `description` (string, required): Detailed symptoms.
@@ -243,6 +244,8 @@ Operational queue of all active triage cases.
 ### Update Patient Status
 `PATCH /dashboard/staff/patient/{id}/status/`
 
+Updates the workflow status. Returns the updated `TriageItem` object.
+
 **Request Body**:
 ```json
 { "status": "in_progress" }
@@ -250,6 +253,8 @@ Operational queue of all active triage cases.
 
 ### Update Patient Priority
 `PATCH /dashboard/staff/patient/{id}/priority/`
+
+Updates the triage priority. Returns the updated `TriageItem` object.
 
 **Request Body**:
 ```json
@@ -259,10 +264,12 @@ Operational queue of all active triage cases.
 ### Verify Patient Identity
 `PATCH /dashboard/staff/patient/{id}/verify/`
 
-Marks a patient as verified by the current staff member.
+Marks a patient as verified. Returns the updated `TriageItem` object.
 
 ### Log Vitals
 `POST /dashboard/staff/patient/{id}/vitals/`
+
+Logs a new set of vitals. Returns the updated `TriageItem` object including the new vitals in the `vitals` array.
 
 **Request Body**:
 ```json
@@ -335,16 +342,42 @@ Manage opt-in/opt-out settings for different notification types.
 Connections must be authenticated via JWT. The token should be passed in the `sec-websocket-protocol` header or via cookie if the frontend is on the same domain.
 
 ### Inbound Events (Server -> Client)
-The server broadcasts events to all connected staff and the relevant patient.
+All events follow a standardized payload structure.
 
-**Event: `patient_created`**
+**Base Event Shape**:
 ```json
 {
-    "type": "patient_created",
-    "id": 12,
-    "patient_name": "John Doe",
-    "priority": 1,
-    "condition": "Severe Trauma"
+    "type": "EVENT_TYPE_STRING",
+    "timestamp": "2024-03-20T10:05:00.000Z",
+    "data": {
+        "submission_id": 12,
+        "triage_item": { ...full_triage_item_object... },
+        "...": "event_specific_fields"
+    }
+}
+```
+
+**Event Types**:
+- `TRIAGE_CREATED`: New triage submission received.
+- `PRIORITY_UPDATE`: Staff updated a patient's priority.
+- `TRIAGE_UPDATED`: Patient status changed (e.g., waiting -> in_progress).
+- `CRITICAL_ALERT`: Triggered for any Priority 1 case.
+
+**Example Payload (`TRIAGE_UPDATED`)**:
+```json
+{
+    "type": "TRIAGE_UPDATED",
+    "timestamp": "2024-03-20T10:05:00Z",
+    "data": {
+        "submission_id": 12,
+        "new_status": "in_progress",
+        "status": "in_progress",
+        "triage_item": {
+            "id": 12,
+            "status": "in_progress",
+            "...": "..."
+        }
+    }
 }
 ```
 
@@ -352,11 +385,21 @@ The server broadcasts events to all connected staff and the relevant patient.
 
 ## 🛠️ 10. Admin Console
 
-### User Management
-- `GET /admin/users/`: List all users.
-- `PATCH /admin/users/{id}/role/`: Update user role (`{"role": "doctor"}`).
-- `DELETE /admin/users/{id}/`: Remove user account.
-
-### System Overview
-- `GET /dashboard/admin/overview/`: Get high-level system metrics.
+...
 - `GET /dashboard/admin/analytics/`: Get detailed triage analytics.
+
+---
+
+## 📅 11. Future Roadmap (Planned Features)
+
+The following features are currently in the development pipeline and will be available in future releases:
+
+### 11.1 Audit Logs
+- `GET /admin/audit-log/`: System-wide audit trail for administrative actions and role changes.
+
+### 11.2 AI Copilot Flow
+- `POST /triage/ai-draft/`: Generates a triage draft for staff review before final submission.
+- `POST /triage/{id}/confirm/`: Staff confirmation of an AI-drafted triage.
+
+### 11.3 Health Interoperability
+- `GET /fhir/Patient/{id}`: FHIR-compliant patient resource export for integration with external hospital systems.
