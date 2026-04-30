@@ -1,7 +1,7 @@
 # TriageSync API Documentation
 
-**Version**: 1.0.0  
-**Last Updated**: April 29, 2026  
+**Version**: 1.1.0  
+**Last Updated**: April 30, 2026  
 **Base URL (Development)**: `http://localhost:8000`  
 **Base URL (Production)**: `https://django-backend-4r5p.onrender.com`
 
@@ -12,13 +12,14 @@
 1. [Authentication](#authentication)
 2. [Authentication Endpoints](#authentication-endpoints)
 3. [Triage Endpoints](#triage-endpoints)
-4. [Patient Endpoints](#patient-endpoints)
-5. [Dashboard Endpoints (Staff Only)](#dashboard-endpoints-staff-only)
-6. [Admin Endpoints (Staff Only)](#admin-endpoints-staff-only)
-7. [WebSocket Events](#websocket-events)
-8. [Error Handling](#error-handling)
-9. [Rate Limiting & Pagination](#rate-limiting--pagination)
-10. [Status Codes](#status-codes)
+4. [Blood Type Integration](#blood-type-integration)
+5. [Patient Endpoints](#patient-endpoints)
+6. [Dashboard Endpoints (Staff Only)](#dashboard-endpoints-staff-only)
+7. [Admin Endpoints (Staff Only)](#admin-endpoints-staff-only)
+8. [WebSocket Events](#websocket-events)
+9. [Error Handling](#error-handling)
+10. [Rate Limiting & Pagination](#rate-limiting--pagination)
+11. [Status Codes](#status-codes)
 
 ---
 
@@ -66,9 +67,10 @@ Create a new user account.
   "name": "john doe",
   "email": "john@example.com",
   "password": "SecurePassword123!",
+  "password2": "SecurePassword123!",
   "role": "patient",
-  "gender": "male",
   "age": 36,
+  "gender": "male",
   "blood_type": "O+",
   "health_history": "No chronic conditions",
   "allergies": "penicillin",
@@ -77,17 +79,18 @@ Create a new user account.
 }
 ```
 
-> **Note:** For patient registration the following fields must be present: `name`, `email`, `password`, `role`, and `age`. Other patient profile fields (`gender`, `blood_type`, `health_history`, `allergies`, `current_medications`, `bad_habits`) are optional but may be provided at registration and will be saved to the patient profile.
+> **Note:** For patient registration, the following fields are **required**: `name`, `email`, `password`, `password2`, `role`, `age`, `gender`, and `blood_type`. These demographic fields are essential for accurate AI triage recommendations. Optional profile fields (`health_history`, `allergies`, `current_medications`, `bad_habits`) can be provided at registration or added later via profile PATCH.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Patient full name (mapped to username) |
 | `email` | string | Yes | Valid email address |
 | `password` | string | Yes | Password (min 8 chars) |
+| `password2` | string | Yes | Password confirmation (must match password) |
 | `role` | string | Yes | One of: `patient`, `nurse`, `doctor`, `admin` |
-| `age` | integer | Yes | Age in years |
-| `gender` | string | No | Patient gender (optional) |
-| `blood_type` | string | No | Blood type (optional) |
+| `age` | integer | Yes | Age in years (0-150) |
+| `gender` | string | Yes | Patient gender (e.g., male, female, other) |
+| `blood_type` | string | Yes | Blood type (A+, A-, B+, B-, AB+, AB-, O+, O-) |
 | `health_history` | string | No | Free-text health history (optional) |
 | `allergies` | string | No | Known allergies (optional) |
 | `current_medications` | string | No | Current medications (optional) |
@@ -115,6 +118,41 @@ Create a new user account.
   "details": {
     "username": ["This field is required."],
     "email": ["Enter a valid email address."]
+  }
+}
+```
+
+**Password Mismatch Error:**
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid registration data",
+  "details": {
+    "password2": ["Passwords do not match."]
+  }
+}
+```
+
+**Invalid Blood Type Error:**
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid registration data",
+  "details": {
+    "blood_type": ["Invalid blood type. Valid types: A+, A-, B+, B-, AB+, AB-, O+, O-"]
+  }
+}
+```
+
+**Missing Required Fields Error:**
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Invalid registration data",
+  "details": {
+    "age": ["This field is required."],
+    "gender": ["This field is required."],
+    "blood_type": ["This field is required."]
   }
 }
 ```
@@ -369,18 +407,27 @@ Get AI triage analysis without creating a submission.
 **Authentication**: None  
 **Permissions**: Public
 
-
 #### Request Body
 
 ```json
 {
   "symptoms": "Chest pain and shortness of breath",
-  "age": 45,   // Optional if authenticated
-  "gender": "male" // Optional if authenticated
+  "age": 45,          // Optional if authenticated
+  "gender": "male",   // Optional if authenticated
+  "blood_type": "A+"  // Optional - enables transfusion guidance for severe bleeding
 }
 ```
 
-> **Note:** If the user is authenticated, the system will automatically use the patient's saved age and gender from their profile. If unauthenticated, you may provide `age` and `gender` in the request body.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `symptoms` | string | Yes | Patient symptoms description |
+| `age` | integer | No* | Patient age (auto-filled from profile if authenticated) |
+| `gender` | string | No* | Patient gender (auto-filled from profile if authenticated) |
+| `blood_type` | string | No | Patient blood type (A+, A-, B+, B-, AB+, AB-, O+, O-) |
+
+> **Note:** If the user is authenticated, the system will automatically use the patient's saved age, gender, and blood_type from their profile. If unauthenticated, you may provide these fields in the request body.
+
+> **Blood Type Feature:** When blood_type is provided and the AI detects severe bleeding or hemorrhage, the response will include transfusion guidance in the `recommended_action` field with compatible blood types based on ABO and Rh compatibility rules.
 
 #### Success Response (200 OK)
 
@@ -398,6 +445,46 @@ Get AI triage analysis without creating a submission.
   ],
   "recommended_action": "Immediate emergency room visit",
   "reason": "Life-threatening cardiac symptoms require immediate medical attention",
+  "source": "ai"
+}
+```
+
+#### Success Response with Blood Transfusion Guidance (200 OK)
+
+When blood_type is provided and severe bleeding is detected:
+
+```json
+{
+  "priority_level": 1,
+  "urgency_score": 95,
+  "condition": "Severe Hemorrhage",
+  "category": "Trauma",
+  "is_critical": true,
+  "explanation": [
+    "severe bleeding",
+    "trauma with blood loss"
+  ],
+  "recommended_action": "Immediate hemorrhage control. Compatible blood types for transfusion: A+, A-, O+, O-",
+  "reason": "Life-threatening blood loss requires immediate intervention and potential transfusion",
+  "source": "ai"
+}
+```
+
+When blood_type is unknown and severe bleeding is detected:
+
+```json
+{
+  "priority_level": 1,
+  "urgency_score": 95,
+  "condition": "Severe Hemorrhage",
+  "category": "Trauma",
+  "is_critical": true,
+  "explanation": [
+    "severe bleeding",
+    "uncontrolled hemorrhage"
+  ],
+  "recommended_action": "Immediate hemorrhage control. Urgent blood typing and crossmatch required for potential transfusion",
+  "reason": "Life-threatening blood loss requires immediate intervention",
   "source": "ai"
 }
 ```
@@ -427,9 +514,12 @@ Extract symptoms from PDF medical documents.
 
 ```
 file: <PDF file> (max 5MB)
-age: 45 (optional)
-gender: male (optional)
+age: 45 (optional - auto-filled from profile if authenticated)
+gender: male (optional - auto-filled from profile if authenticated)
+blood_type: A+ (optional - enables transfusion guidance for severe bleeding)
 ```
+
+**Supported Blood Types**: A+, A-, B+, B-, AB+, AB-, O+, O-
 
 #### Success Response (200 OK)
 
@@ -468,6 +558,166 @@ gender: male (optional)
   "message": "No extractable text found in the PDF. Please upload a PDF with selectable text."
 }
 ```
+
+---
+
+## Blood Type Integration
+
+### Overview
+
+The triage AI system now supports blood type as a demographic parameter. When blood type is provided and the AI detects severe bleeding or hemorrhage, it automatically includes blood transfusion guidance in the response.
+
+### Features
+
+- **Automatic Detection**: AI recognizes severe bleeding scenarios using keywords like "severe bleeding", "hemorrhage", "heavy bleeding", "uncontrolled bleeding", "trauma with bleeding"
+- **Blood Compatibility Rules**: Follows standard ABO and Rh compatibility guidelines
+- **Transfusion Guidance**: Provides compatible blood types when severe bleeding is detected
+- **Fail-Safe**: Recommends urgent blood typing when blood type is unknown
+- **Backward Compatible**: All blood_type parameters are optional
+
+### Supported Blood Types
+
+| Blood Type | Compatible Donor Types |
+|------------|------------------------|
+| O- | O- only (universal donor can only receive O-) |
+| O+ | O+, O- |
+| A- | A-, O- |
+| A+ | A+, A-, O+, O- |
+| B- | B-, O- |
+| B+ | B+, B-, O+, O- |
+| AB- | AB-, A-, B-, O- |
+| AB+ | All types (universal recipient) |
+
+### Usage Examples
+
+#### Example 1: Severe Bleeding with Known Blood Type
+
+**Request:**
+```json
+POST /api/v1/triage/ai/
+{
+  "symptoms": "Severe bleeding from leg wound after car accident",
+  "age": 35,
+  "gender": "male",
+  "blood_type": "A+"
+}
+```
+
+**Response:**
+```json
+{
+  "priority_level": 1,
+  "urgency_score": 95,
+  "condition": "Severe Hemorrhage",
+  "category": "Trauma",
+  "is_critical": true,
+  "explanation": ["severe bleeding", "trauma"],
+  "recommended_action": "Immediate hemorrhage control. Compatible blood types for transfusion: A+, A-, O+, O-",
+  "reason": "Life-threatening blood loss requires immediate intervention",
+  "source": "ai"
+}
+```
+
+#### Example 2: Severe Bleeding with Unknown Blood Type
+
+**Request:**
+```json
+POST /api/v1/triage/ai/
+{
+  "symptoms": "Uncontrolled hemorrhage from abdominal injury",
+  "age": 42,
+  "gender": "female"
+}
+```
+
+**Response:**
+```json
+{
+  "priority_level": 1,
+  "urgency_score": 95,
+  "condition": "Severe Hemorrhage",
+  "category": "Trauma",
+  "is_critical": true,
+  "explanation": ["uncontrolled hemorrhage", "abdominal injury"],
+  "recommended_action": "Immediate hemorrhage control. Urgent blood typing and crossmatch required for potential transfusion",
+  "reason": "Life-threatening blood loss requires immediate intervention",
+  "source": "ai"
+}
+```
+
+#### Example 3: Non-Bleeding Case with Blood Type
+
+**Request:**
+```json
+POST /api/v1/triage/ai/
+{
+  "symptoms": "Mild cough and runny nose",
+  "age": 28,
+  "gender": "male",
+  "blood_type": "O-"
+}
+```
+
+**Response:**
+```json
+{
+  "priority_level": 5,
+  "urgency_score": 10,
+  "condition": "Upper Respiratory Infection",
+  "category": "Respiratory",
+  "is_critical": false,
+  "explanation": ["mild cough", "runny nose"],
+  "recommended_action": "Home care and monitor symptoms",
+  "reason": "Symptoms are mild and not concerning",
+  "source": "ai"
+}
+```
+
+**Note**: Blood type is included in the AI analysis but no transfusion guidance is provided since no severe bleeding was detected.
+
+### Blood Type in Patient Profile
+
+Blood type can be saved to the patient profile during registration or updated later:
+
+**Registration with Blood Type:**
+```json
+POST /api/v1/auth/register/
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "SecurePassword123!",
+  "role": "patient",
+  "age": 35,
+  "gender": "male",
+  "blood_type": "A+"
+}
+```
+
+**Update Profile with Blood Type:**
+```json
+PATCH /api/v1/profile/
+{
+  "blood_type": "A+"
+}
+```
+
+When authenticated, the system automatically uses the saved blood type for AI analysis without requiring it in each request.
+
+### Important Notes
+
+1. **Medical Disclaimer**: AI recommendations are advisory only. Healthcare providers must verify all transfusion decisions through proper blood typing and crossmatch procedures.
+
+2. **Backward Compatibility**: All existing API calls work unchanged. Blood type is completely optional.
+
+3. **Normalization**: The system accepts various blood type formats (e.g., "a+", "A positive", "a pos") and normalizes them to standard format (e.g., "A+").
+
+4. **Invalid Blood Types**: Invalid blood type values are treated as "unknown" and do not cause errors.
+
+5. **Severe Bleeding Criteria**: The AI considers cases as severe bleeding when:
+   - Priority level = 1
+   - Urgency score > 85
+   - is_critical = true
+   - Symptoms contain bleeding-related keywords
 
 ---
 
@@ -1158,6 +1408,6 @@ All list endpoints support pagination with the following parameters:
 
 **Built with ❤️ for better healthcare**
 
-**Version**: 1.0.0  
-**Last Updated**: April 29, 2026  
+**Version**: 1.1.0  
+**Last Updated**: April 30, 2026  
 **Status**: Production Ready ✅

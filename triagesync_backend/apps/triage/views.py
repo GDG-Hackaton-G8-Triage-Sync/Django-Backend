@@ -54,8 +54,9 @@ class TriageAIView(APIView):
         symptoms = data.get("symptoms")
         age = data.get("age")
         gender = data.get("gender")
+        blood_type = data.get("blood_type")
         # If not provided, get from patient profile (if authenticated)
-        if not age or not gender:
+        if not age or not gender or not blood_type:
             user = request.user if request.user and request.user.is_authenticated else None
             if user and hasattr(user, "patient_profile"):
                 patient = user.patient_profile
@@ -63,6 +64,8 @@ class TriageAIView(APIView):
                     age = patient.age
                 if not gender and getattr(patient, "gender", None):
                     gender = patient.gender
+                if not blood_type and getattr(patient, "blood_type", None):
+                    blood_type = patient.blood_type
         if error:
             return Response({
                 "error": "Missing symptoms.",
@@ -81,7 +84,7 @@ class TriageAIView(APIView):
                 "message": "Please provide symptoms or information related to a medical triage situation."
             }, status=status.HTTP_400_BAD_REQUEST)
         try:
-            result = get_triage_recommendation(symptoms, age=age, gender=gender)
+            result = get_triage_recommendation(symptoms, age=age, gender=gender, blood_type=blood_type)
         except Exception as e:
             return Response({
                 "error": "AI service unavailable.",
@@ -184,6 +187,7 @@ class TriagePDFExtractView(APIView):
         # Build prompt and call Gemini -- carry demographics from the multipart form if present
         pdf_age = normalize_age(request.data.get("age"))
         pdf_gender = normalize_gender(request.data.get("gender"))
+        pdf_blood_type = request.data.get("blood_type")
         # If not provided, get from patient profile (if authenticated)
         user = request.user if request.user and request.user.is_authenticated else None
         if user and hasattr(user, "patient_profile"):
@@ -192,7 +196,9 @@ class TriagePDFExtractView(APIView):
                 pdf_age = patient.age
             if not pdf_gender and getattr(patient, "gender", None):
                 pdf_gender = patient.gender
-        prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender)
+            if not pdf_blood_type and getattr(patient, "blood_type", None):
+                pdf_blood_type = patient.blood_type
+        prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender, blood_type=pdf_blood_type)
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
         ]

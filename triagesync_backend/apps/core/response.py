@@ -22,7 +22,7 @@ def error_response(code, message, details=None, status_code=status.HTTP_400_BAD_
     API contract requires error format: {"code": "...", "message": "...", "details": ...}
     """
     response_data = {"code": code, "message": message}
-    if details:
+    if details is not None:
         response_data["details"] = details
     return Response(response_data, status=status_code)
 

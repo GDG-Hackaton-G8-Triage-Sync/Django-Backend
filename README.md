@@ -32,6 +32,7 @@ Registration accepts patient demographic and profile fields at signup. The follo
 - **Rule-Based Backup**: Keyword-based triage when AI is unavailable
 - **PDF Support**: Extract and analyze symptoms from medical documents
 - **Circuit Breaker**: Protects against API quota exhaustion
+- **Blood Type Integration**: AI considers patient blood type for transfusion guidance in severe bleeding cases
 
 ### Intelligent Queue Management
 - **Dynamic Priority Ordering**: Critical cases (Priority 1) automatically move to top
@@ -141,11 +142,8 @@ DJANGO_DEBUG=True
 DJANGO_SECRET_KEY=your-secret-key-here-generate-with-django
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Database (PostgreSQL recommended for production)
+# Database (PostgreSQL only - required)
 DATABASE_URL=postgresql://user:password@localhost:5432/triagesync
-
-# Or SQLite for development
-# DATABASE_URL=sqlite:///db.sqlite3
 
 # Gemini AI (Required)
 GEMINI_API_KEY=your-gemini-api-key-here
@@ -193,7 +191,7 @@ Access the application:
 | `DJANGO_DEBUG` | Enable debug mode | `False` | No |
 | `DJANGO_SECRET_KEY` | Django secret key | - | **Yes** |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated hosts | `localhost` | **Yes** |
-| `DATABASE_URL` | Database connection string | SQLite | **Yes** |
+| `DATABASE_URL` | PostgreSQL connection string | - | **Yes** |
 | `GEMINI_API_KEY` | Google Gemini API key | - | **Yes** |
 | `CORS_ALLOW_ALL_ORIGINS` | Allow all CORS origins | `False` | No |
 
@@ -304,7 +302,14 @@ Django-Backend/
 ```
 
 #### Demographics in AI Endpoints
-If authenticated, the system automatically uses the patient's saved age and gender for AI analysis (no need to send them in the request body). If unauthenticated, you may provide `age` and `gender` directly in the request.
+If authenticated, the system automatically uses the patient's saved age, gender, and blood type for AI analysis (no need to send them in the request body). If unauthenticated, you may provide `age`, `gender`, and `blood_type` directly in the request.
+
+**Blood Type Support**: The AI triage system now accepts blood type as a demographic parameter. When severe bleeding or hemorrhage is detected, the AI provides blood transfusion guidance:
+- **Known Blood Type**: Recommends compatible blood types for transfusion based on ABO and Rh compatibility rules
+- **Unknown Blood Type**: Recommends urgent blood typing and crossmatch
+- **Non-Bleeding Cases**: Blood type is included in analysis but no transfusion guidance is provided
+
+**Supported Blood Types**: A+, A-, B+, B-, AB+, AB-, O+, O-
 
 ### Base URLs
 
@@ -327,10 +332,14 @@ POST /api/v1/auth/register/
 Content-Type: application/json
 
 {
-  "username": "john_doe",
-  "password": "secure_password123",
+  "name": "john_doe",
   "email": "john@example.com",
-  "role": "patient"
+  "password": "secure_password123",
+  "password2": "secure_password123",
+  "role": "patient",
+  "age": 35,
+  "gender": "male",
+  "blood_type": "A+"
 }
 ```
 
@@ -374,6 +383,32 @@ Response:
   "condition": "Acute Cardiac Event",
   "status": "waiting",
   "created_at": "2026-04-29T08:00:00Z"
+}
+```
+
+**4. Submit triage with blood type (for severe bleeding cases):**
+```bash
+POST /api/v1/triage/ai/
+Content-Type: application/json
+
+{
+  "symptoms": "Severe bleeding from leg wound after accident",
+  "age": 35,
+  "gender": "male",
+  "blood_type": "A+"
+}
+
+Response:
+{
+  "priority_level": 1,
+  "urgency_score": 95,
+  "condition": "Severe Hemorrhage",
+  "category": "Trauma",
+  "is_critical": true,
+  "explanation": ["severe bleeding", "trauma"],
+  "recommended_action": "Immediate hemorrhage control. Compatible blood types for transfusion: A+, A-, O+, O-",
+  "reason": "Life-threatening blood loss requires immediate intervention",
+  "source": "ai"
 }
 ```
 
@@ -703,6 +738,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ for better healthcare**
 
-**Version**: 1.0.0  
-**Last Updated**: April 29, 2026  
+**Version**: 1.1.0  
+**Last Updated**: April 30, 2026  
 **Status**: Production Ready ✅

@@ -91,35 +91,26 @@ database_url = os.getenv("DATABASE_URL")
 if database_url:
     tmpPostgres = urlparse(database_url)
     db_name = tmpPostgres.path.replace("/", "")
-    import sys
-    # Use SQLite for tests to avoid connection issues and improve speed
-    if 'test' in sys.argv or 'pytest' in sys.argv[0]:
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.sqlite3",
-                "NAME": BASE_DIR / "test_db.sqlite3",
-            }
-        }
-    else:
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.postgresql",
-                "NAME": db_name,
-                "USER": tmpPostgres.username,
-                "PASSWORD": tmpPostgres.password,
-                "HOST": tmpPostgres.hostname,
-                "PORT": tmpPostgres.port or 5432,
-                "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
-            }
-        }
-else:
-    # Local fallback for development
+    
+    # Always use PostgreSQL - no SQLite fallback
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": db_name,
+            "USER": tmpPostgres.username,
+            "PASSWORD": tmpPostgres.password,
+            "HOST": tmpPostgres.hostname,
+            "PORT": tmpPostgres.port or 5432,
+            "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
         }
     }
+else:
+    # Enforce PostgreSQL - DATABASE_URL is required
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "PostgreSQL is the only supported database. "
+        "Please set DATABASE_URL to your PostgreSQL connection string."
+    )
 
 
 AUTH_PASSWORD_VALIDATORS = [

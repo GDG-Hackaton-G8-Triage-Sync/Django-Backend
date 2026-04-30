@@ -142,6 +142,17 @@ _GENDER_MAP = {
     "u": "unknown", "unknown": "unknown", "prefer not to say": "unknown", "n/a": "unknown",
 }
 
+_BLOOD_TYPE_MAP = {
+    "a+": "A+", "a positive": "A+", "a pos": "A+", "a +": "A+",
+    "a-": "A-", "a negative": "A-", "a neg": "A-", "a -": "A-",
+    "b+": "B+", "b positive": "B+", "b pos": "B+", "b +": "B+",
+    "b-": "B-", "b negative": "B-", "b neg": "B-", "b -": "B-",
+    "ab+": "AB+", "ab positive": "AB+", "ab pos": "AB+", "ab +": "AB+",
+    "ab-": "AB-", "ab negative": "AB-", "ab neg": "AB-", "ab -": "AB-",
+    "o+": "O+", "o positive": "O+", "o pos": "O+", "o +": "O+",
+    "o-": "O-", "o negative": "O-", "o neg": "O-", "o -": "O-",
+}
+
 
 def normalize_age(age):
     """Coerce to int in [0, 150]; anything else -> None (prompt says 'unknown')."""
@@ -162,6 +173,16 @@ def normalize_gender(gender):
     if not s:
         return None
     return _GENDER_MAP.get(s, "other")
+
+
+def normalize_blood_type(blood_type):
+    """Canonicalize to standard blood type format or None if blank/invalid."""
+    if blood_type is None:
+        return None
+    s = str(blood_type).strip().lower()
+    if not s:
+        return None
+    return _BLOOD_TYPE_MAP.get(s, None)  # Invalid → None
 
 
 # --- Error classification --------------------------------------------------
@@ -330,10 +351,11 @@ def _parse_ai_json(text):
     return None, "no JSON object found"
 
 
-def get_triage_recommendation(symptoms, age=None, gender=None, model_name=None):
+def get_triage_recommendation(symptoms, age=None, gender=None, blood_type=None, model_name=None):
     age = normalize_age(age)
     gender = normalize_gender(gender)
-    prompt = build_triage_prompt(symptoms, age=age, gender=gender)
+    blood_type = normalize_blood_type(blood_type)
+    prompt = build_triage_prompt(symptoms, age=age, gender=gender, blood_type=blood_type)
     response_text = call_gemini_api(prompt, model_name=model_name, user_description=symptoms)
     logger.debug("Raw AI response: %r", response_text)
 

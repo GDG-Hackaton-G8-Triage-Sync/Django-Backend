@@ -8,14 +8,16 @@ class Patient(models.Model):
         on_delete=models.CASCADE,
         related_name="patient_profile"
     )
+    # required feilds
     name = models.CharField(max_length=255)
     date_of_birth = models.DateField(null=True, blank=True)
     contact_info = models.CharField(max_length=255, blank=True)
     
+    gender = models.CharField(max_length=50, default="Male")
+    age = models.IntegerField(default=18)
+    blood_type = models.CharField(max_length=10, default="O+")
+
     # Additional profile fields for generic profile endpoint
-    gender = models.CharField(max_length=50, blank=True, null=True)
-    age = models.IntegerField(null=True, blank=True)
-    blood_type = models.CharField(max_length=10, blank=True, null=True)
     health_history = models.TextField(blank=True, null=True)
     allergies = models.TextField(blank=True, null=True)
     current_medications = models.TextField(blank=True, null=True)

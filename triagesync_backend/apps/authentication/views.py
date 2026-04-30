@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.db import transaction
 
 from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer
@@ -59,6 +60,7 @@ class LoginView(APIView):
             return error_response(
                 code="AUTHENTICATION_FAILED",
                 message="Invalid username or password",
+                details={},
                 status_code=status.HTTP_401_UNAUTHORIZED
             )
 
@@ -82,6 +84,48 @@ class RefreshTokenView(TokenRefreshView):
     Accepts refresh_token and returns new access_token
     """
     permission_classes = [AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        """
+        Override post method to wrap simplejwt's token refresh logic
+        with standardized error handling.
+        """
+        # Check if refresh token is provided
+        if 'refresh' not in request.data or not request.data.get('refresh'):
+            return error_response(
+                code="INVALID_TOKEN",
+                message="Refresh token is required",
+                details={},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        try:
+            # Call parent's post method to leverage simplejwt's token refresh logic
+            return super().post(request, *args, **kwargs)
+        except InvalidToken as e:
+            # Handle invalid or expired refresh tokens
+            return error_response(
+                code="INVALID_TOKEN",
+                message="Invalid or expired refresh token",
+                details={},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        except TokenError as e:
+            # Handle other token-related errors
+            return error_response(
+                code="INVALID_TOKEN",
+                message="Token error occurred",
+                details={},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            # Handle any other unexpected errors
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message="An unexpected error occurred during token refresh",
+                details={},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class GenericProfileView(APIView):
