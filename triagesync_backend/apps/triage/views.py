@@ -293,15 +293,25 @@ class TriageSubmissionView(APIView):
     def post(self, request):
         logger = logging.getLogger("triage.submission")
         
+        # DEBUG: Log the incoming request data
+        logger.info(f"Request data: {request.data}")
+        logger.info(f"Request content type: {request.content_type}")
+        
         # Get description from request (API contract field name)
         description = request.data.get("description")
         photo_name = request.data.get("photo_name")
+        
+        # DEBUG: Log what we extracted
+        logger.info(f"Extracted description: {description}")
+        logger.info(f"Description type: {type(description)}")
+        logger.info(f"Description bool: {bool(description)}")
 
         # Log triage submission attempt
         logger.info(f"Triage submission from user {request.user.id}")
 
         # Validate input using centralized validator
         if not description:
+            logger.error(f"Description validation failed. Request data was: {request.data}")
             return Response({
                 "code": "VALIDATION_ERROR",
                 "message": "Description is required"

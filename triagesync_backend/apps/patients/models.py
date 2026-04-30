@@ -39,11 +39,24 @@ class PatientSubmission(models.Model):
     # INPUT
     symptoms = models.TextField()
     photo_name = models.CharField(max_length=255, null=True, blank=True)
+    photo = models.FileField(upload_to="triage_photos/", null=True, blank=True)
 
     # TRIAGE OUTPUT
     priority = models.IntegerField(null=True, blank=True)
     urgency_score = models.IntegerField(null=True, blank=True)
     condition = models.CharField(max_length=255, null=True, blank=True)
+    category = models.CharField(max_length=100, null=True, blank=True)
+    is_critical = models.BooleanField(default=False)
+    explanation = models.JSONField(default=list, blank=True)
+    recommended_action = models.TextField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    confidence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=50, null=True, blank=True)
+    
+    # ROUTING AND FILTERING FIELDS (underutilized-features-implementation)
+    requires_immediate_attention = models.BooleanField(default=False)
+    specialist_referral_suggested = models.BooleanField(default=False)
+    critical_keywords = models.JSONField(default=list, blank=True)
 
     # WORKFLOW
     status = models.CharField(
