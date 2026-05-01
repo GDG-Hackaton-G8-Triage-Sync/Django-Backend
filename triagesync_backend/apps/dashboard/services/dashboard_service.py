@@ -85,30 +85,68 @@ def update_patient_status(patient_id, new_status):
 
 def get_admin_overview():
     """
-    Aggregated system stats
+    Aggregated system stats for Admin Dashboard.
+    Alinged with frontend expectations (Enterprise Admin Portal).
     """
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Calculate average wait time (created_at to now for waiting/in_progress)
+    active_submissions = PatientSubmission.objects.filter(status__in=["waiting", "in_progress"])
+    avg_wait = 0
+    if active_submissions.exists():
+        total_wait_mins = sum((now - s.created_at).total_seconds() / 60 for s in active_submissions)
+        avg_wait = total_wait_mins / active_submissions.count()
+
     return {
         "total_patients": PatientSubmission.objects.count(),
-        "waiting": PatientSubmission.objects.filter(status="waiting").count(),
-        "in_progress": PatientSubmission.objects.filter(status="in_progress").count(),
-        "completed": PatientSubmission.objects.filter(status="completed").count(),
+        "waiting_patients": PatientSubmission.objects.filter(status="waiting").count(),
+        "in_progress_patients": PatientSubmission.objects.filter(status="in_progress").count(),
+        "completed_today": PatientSubmission.objects.filter(status="completed", processed_at__gte=today_start).count(),
         "critical_cases": PatientSubmission.objects.filter(priority=1).count(),
+        "average_wait_time_minutes": round(avg_wait, 1)
     }
 
 
 def get_admin_analytics():
     """
-    Optional analytics data
+    Detailed analytics for Admin Dashboard.
+    Formats common_conditions as a dict and provides peak usage time.
     """
+    # Format common conditions as { "Name": count }
+    conditions_query = (
+        PatientSubmission.objects.values("category")
+        .annotate(count=Count("category"))
+        .order_by("-count")[:5]
+    )
+    
+    common_conditions = {
+        item["category"] or "General": item["count"] 
+        for item in conditions_query
+    }
+
+    # Peak usage time calculation (simplistic: most common hour)
+    from django.db.models.functions import ExtractHour
+    peak_hour_query = (
+        PatientSubmission.objects.annotate(hour=ExtractHour("created_at"))
+        .values("hour")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+        .first()
+    )
+    
+    peak_usage_time = "N/A"
+    if peak_hour_query:
+        hour = peak_hour_query["hour"]
+        peak_usage_time = f"{hour:02d}:00 - {hour+1:02d}:00"
+
+    avg_urgency = PatientSubmission.objects.aggregate(Avg("urgency_score"))["urgency_score__avg"] or 0
+
     return {
-        "avg_urgency_score": PatientSubmission.objects.aggregate(
-            Avg("urgency_score")
-        )["urgency_score__avg"],
-        "common_conditions": list(
-            PatientSubmission.objects.values("condition")
-            .annotate(count=Count("condition"))
-            .order_by("-count")[:3]
-        ),
+        "avg_urgency_score": round(avg_urgency, 1),
+        "peak_usage_time": peak_usage_time,
+        "common_conditions": common_conditions,
+        "peak_hour": peak_usage_time, # Backward compatibility
     }
 
 def update_priority(patient, priority):
