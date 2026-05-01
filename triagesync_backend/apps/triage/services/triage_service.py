@@ -15,6 +15,7 @@ from django.conf import settings
 
 from .ai_service import infer_priority
 from .ai_service import get_triage_recommendation
+from . import ai_service
 from .validation_service import get_fallback_ai_output, validate_ai_output, validate_symptoms
 from .triage_config import PRIORITY_THRESHOLDS, TRIAGE_FALLBACK
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_critical_alert
@@ -118,6 +119,12 @@ def safe_infer_priority(symptoms: str) -> dict:
     Falls back to default values if AI fails or returns invalid data.
     """
     try:
+        # Legacy-first compatibility path used by existing tests/callers.
+        legacy_ai = ai_service.infer_priority(symptoms)
+        if validate_ai_output(legacy_ai):
+            legacy_ai.setdefault("source", "AI_SYSTEM")
+            return legacy_ai
+
         # Prefer the full AI recommendation (Gemini) but keep the legacy
         # `infer_priority` compatibility shape for callers/tests. `get_triage_recommendation`
         # returns the normalized M5 contract (priority_level / urgency_score / condition).
@@ -125,7 +132,9 @@ def safe_infer_priority(symptoms: str) -> dict:
 
         # If AI returned an error envelope, fall back immediately.
         if not isinstance(ai_raw, dict) or ai_raw.get("error"):
-            return get_fallback_ai_output()
+            fallback = get_fallback_ai_output()
+            fallback["source"] = "AI_FALLBACK"
+            return fallback
 
         # Normalize Gemini/M5 shape into legacy shape expected by validators/tests.
         legacy = {
@@ -135,11 +144,16 @@ def safe_infer_priority(symptoms: str) -> dict:
         }
 
         if validate_ai_output(legacy):
+            legacy["source"] = ai_raw.get("source", "AI_SYSTEM")
             return legacy
 
-        return get_fallback_ai_output()
+        fallback = get_fallback_ai_output()
+        fallback["source"] = "AI_FALLBACK"
+        return fallback
     except Exception:
-        return get_fallback_ai_output()
+        fallback = get_fallback_ai_output()
+        fallback["source"] = "AI_FALLBACK"
+        return fallback
 
 
 # -------------------------
@@ -307,63 +321,22 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
         condition = ai_payload["condition"]
         source = ai_payload["source"]
     else:
-        ai_output = get_triage_recommendation(clean_symptoms)
+        ai_output = safe_infer_priority(clean_symptoms)
+        urgency_score = ai_output.get("urgency_score", 50)
+        condition = ai_output.get("condition", "Unknown")
+        source = ai_output.get("source", "AI_SYSTEM")
 
-        # If Gemini fails (error envelope / invalid payload), fall back to
-        # deterministic defaults so triage remains available.
-        if not isinstance(ai_output, dict) or ai_output.get("error"):
-            fallback = get_fallback_ai_output()
-            ai_output = {
-                "urgency_score": fallback.get("urgency_score", 50),
-                "condition": fallback.get("condition", "Unknown"),
-                "category": "General",
-                "explanation": ["AI unavailable; fallback triage applied"],
-                "recommended_action": "Staff review required",
-                "reason": "Fallback applied because AI output was unavailable or invalid.",
-                "priority_level": calculate_priority(fallback.get("urgency_score", 50)),
-                "is_critical": fallback.get("urgency_score", 50) >= PRIORITY_THRESHOLDS["critical"],
-                "source": "AI_FALLBACK",
-            }
-
-        # Ensure ai_output is a dictionary with the expected keys
-        if isinstance(ai_output, dict):
-            urgency_score = ai_output.get("urgency_score", 50)
-            condition = ai_output.get("condition", "Unknown")
-            ai_payload = {field: ai_output.get(field, None) for field in ai_contract_fields}
-            ai_payload["urgency_score"] = urgency_score
-            ai_payload["condition"] = condition
-            ai_payload["source"] = ai_output.get("source", "AI_SYSTEM")
-            # Fill missing contract fields with safe defaults
-            for field in ai_contract_fields:
-                if ai_payload[field] is None:
-                    if field == "category":
-                        ai_payload[field] = "General"
-                    elif field == "explanation":
-                        ai_payload[field] = ["AI output missing explanation"]
-                    elif field == "recommended_action":
-                        ai_payload[field] = "Staff review required"
-                    elif field == "reason":
-                        ai_payload[field] = "AI output missing reason."
-                    elif field == "priority_level":
-                        ai_payload[field] = calculate_priority(urgency_score)
-                    elif field == "is_critical":
-                        ai_payload[field] = urgency_score >= PRIORITY_THRESHOLDS["critical"]
-                    elif field == "source":
-                        ai_payload[field] = "AI_SYSTEM"
-        else:
-            urgency_score = 50
-            condition = "Unknown"
-            ai_payload = {
-                "urgency_score": urgency_score,
-                "condition": condition,
-                "category": "General",
-                "explanation": ["AI output missing or invalid"],
-                "recommended_action": "Staff review required",
-                "reason": "AI output missing or invalid.",
-                "priority_level": calculate_priority(urgency_score),
-                "is_critical": urgency_score >= PRIORITY_THRESHOLDS["critical"],
-                "source": "AI_SYSTEM"
-            }
+        ai_payload = {
+            "urgency_score": urgency_score,
+            "condition": condition,
+            "category": ai_output.get("category", "General"),
+            "explanation": ai_output.get("explanation", ["AI output missing explanation"]),
+            "recommended_action": ai_output.get("recommended_action", "Staff review required"),
+            "reason": ai_output.get("reason", "AI output missing reason."),
+            "priority_level": ai_output.get("priority", ai_output.get("priority_level", calculate_priority(urgency_score))),
+            "is_critical": ai_output.get("is_critical", urgency_score >= PRIORITY_THRESHOLDS["critical"]),
+            "source": source,
+        }
         source = ai_payload.get("source", "AI_SYSTEM")
 
     # 4. Apply business rules (Member 6 logic)

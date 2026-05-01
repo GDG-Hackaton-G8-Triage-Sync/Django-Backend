@@ -225,7 +225,11 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
     errors = []
     error_types = set()
     max_retries = _get_setting("GEMINI_MAX_RETRIES", 2)
-    timeout_seconds = _get_setting("GEMINI_TIMEOUT_SECONDS", 8)
+    configured_timeout = _get_setting("GEMINI_TIMEOUT_SECONDS", 8)
+    # Safety floor: historical bug reports showed 8s timing out valid AI calls.
+    # Keep settings support, but never go below the minimum operational timeout.
+    min_timeout_seconds = _get_setting("GEMINI_MIN_TIMEOUT_SECONDS", 30)
+    timeout_seconds = max(configured_timeout, min_timeout_seconds)
 
     def try_generate(model, prompt):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

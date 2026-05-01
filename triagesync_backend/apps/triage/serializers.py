@@ -42,6 +42,15 @@ class TriageAIResponseSerializer(serializers.Serializer):
     explanation = serializers.ListField(child=serializers.CharField(), min_length=1)
     recommended_action = serializers.CharField()
     reason = serializers.CharField()
+    # Backward-compatible enrichment fields (optional with safe defaults)
+    critical_keywords = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        allow_empty=True,
+    )
+    requires_immediate_attention = serializers.BooleanField(required=False, default=False)
+    specialist_referral_suggested = serializers.BooleanField(required=False, default=False)
 
 
 class PDFUploadSerializer(serializers.Serializer):

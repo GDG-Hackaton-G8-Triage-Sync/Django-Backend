@@ -376,7 +376,7 @@ IF severe hemorrhage criteria met AND blood_type is unknown:
 IF severe hemorrhage criteria NOT met:
   → Do NOT include transfusion guidance, even if blood_type is known
 
-=== DOCUMENT ANALYSIS INSTRUCTIONS ===
+=== Document Analysis Instructions ===
 
 ## Information Extraction Priority:
 1. **Chief Complaint/Presenting Problem**: Primary reason for medical attention
