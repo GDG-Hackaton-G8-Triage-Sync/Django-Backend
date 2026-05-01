@@ -1,4 +1,4 @@
-﻿from rest_framework.views import APIView
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
@@ -102,6 +102,38 @@ class AdminSubmissionDeleteView(APIView):
             return error_response(
                 code="NOT_FOUND",
                 message="Submission not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message=str(e),
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+class AdminUserDeleteView(APIView):
+    """
+    Admin user deletion endpoint.
+    
+    DELETE /api/v1/admin/users/{id}/
+    Deletes a user (admin only).
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+    
+    def delete(self, request, user_id):
+        """Delete a user (admin only)."""
+        try:
+            with transaction.atomic():
+                user = User.objects.select_for_update().get(id=user_id)
+                user.delete()
+                
+                return Response(
+                    {"message": "User deleted successfully"},
+                    status=status.HTTP_200_OK
+                )
+        except User.DoesNotExist:
+            return error_response(
+                code="NOT_FOUND",
+                message="User not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
