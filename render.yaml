@@ -1,0 +1,48 @@
+services:
+  # Django Backend Service
+  - type: web
+    name: triagesync-backend
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn triagesync_backend.config.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DJANGO_SETTINGS_MODULE
+        value: triagesync_backend.config.settings
+      - key: DJANGO_DEBUG
+        value: False
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: triagesync-db
+          property: connectionString
+      - key: CORS_ALLOW_ALL_ORIGINS
+        value: True
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL_PRIORITY
+        value: gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash,gemini-2.0-flash-lite,gemini-1.5-flash,gemini-1.5-flash-8b
+      - key: GEMINI_MAX_RETRIES
+        value: 2
+      - key: GEMINI_TIMEOUT_SECONDS
+        value: 8
+      - key: GEMINI_MODEL_LIST_TTL_SECONDS
+        value: 600
+      - key: GEMINI_CIRCUIT_BREAKER_THRESHOLD
+        value: 5
+      - key: GEMINI_CIRCUIT_BREAKER_COOLDOWN_SECONDS
+        value: 30
+
+databases:
+  - name: triagesync-db
+    databaseName: triagesync
+    user: triagesync
+    plan: free
+    region: oregon
