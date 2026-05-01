@@ -15,6 +15,8 @@ import json
 import re
 from io import BytesIO
 
+from asgiref.sync import iscoroutinefunction, markcoroutinefunction
+
 ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description"})
 TRIAGE_PATH_PREFIX = "/api/v1/triage/"
 MAX_SYMPTOMS_LENGTH = 500
@@ -33,13 +35,27 @@ def _strip_controls(value):
 class PayloadSanitizerMiddleware:
     """Whitelist + hygiene gate for triage JSON payloads."""
 
+    sync_capable = True
+    async_capable = True
+
     def __init__(self, get_response):
         self.get_response = get_response
+        self._is_coroutine = iscoroutinefunction(get_response)
+        if self._is_coroutine:
+            markcoroutinefunction(self)
 
     def __call__(self, request):
+        if self._is_coroutine:
+            return self.__acall__(request)
+
         if self._should_sanitize(request):
             self._sanitize(request)
         return self.get_response(request)
+
+    async def __acall__(self, request):
+        if self._should_sanitize(request):
+            self._sanitize(request)
+        return await self.get_response(request)
 
     def _should_sanitize(self, request):
         if request.method not in MUTATING_METHODS:
