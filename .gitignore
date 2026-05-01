@@ -297,3 +297,4 @@ reports/PRESERVATION_TESTS_TASK2_COMPLETE.md
 reports/TASK_4_AI_TIMEOUT_CHECKPOINT_REPORT.md
 triagesync_backend/apps/triage/tests/test_payload_sanitizer.py
 
+reports/TRIAGE_EVENT_FLOW_VERIFICATION.md
