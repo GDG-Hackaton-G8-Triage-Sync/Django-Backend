@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from triagesync_backend.apps.authentication.permissions import IsMedicalStaff
+from triagesync_backend.apps.authentication.permissions import IsMedicalStaff, IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, validation_error_response, not_found_response
 from .serializers import DashboardPatientSerializer
