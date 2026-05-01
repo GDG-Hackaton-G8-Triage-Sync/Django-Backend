@@ -294,3 +294,4 @@ test_integration_websocket_events.py.new
 !scripts/dev/**
 
 reports/PRESERVATION_TESTS_TASK2_COMPLETE.md
+reports/TASK_4_AI_TIMEOUT_CHECKPOINT_REPORT.md
