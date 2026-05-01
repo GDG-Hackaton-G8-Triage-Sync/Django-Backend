@@ -61,7 +61,7 @@ task_*_verification.py
 !API_CONTRACT_COMPLETION_SUMMARY.md
 !FINAL_TEST_REPORT.md
 !IMPLEMENTATION_COMPLETE.md
-!DATABASE_CONNECTION_REPORT.md
+!DATABASE_CONNECTION_REPORT.
 !INTEGRATION_REVIEW.md
 !LICENSE
 # Byte-compiled / optimized / DLL files
@@ -279,18 +279,16 @@ __marimo__/
 /.kiro/
 TASK2_COMPLETE.txt
 fix_test_unicode.py
-fix_test_unicode.py
-fix_test_unicode.py
 list_gemini_models.py
 test_api_ai.py
 test_env.py
 test_gemini_key.py
 test_integration_websocket_events.py.new
 
-# Root-level local verification and diagnostics scripts
-/fix_test_unicode.py
-/list_gemini_models.py
-/test_api_ai.py
-/test_env.py
-/test_gemini_key.py
-/test_integration_websocket_events.py.new
+# Keep organized project folders tracked
+!docs/
+!docs/**
+!reports/
+!reports/**
+!scripts/dev/
+!scripts/dev/**
