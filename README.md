@@ -32,6 +32,32 @@ The project is configured for seamless deployment on **Render** using the provid
 - `DATABASE_URL`: PostgreSQL connection string.
 - `REDIS_URL`: Required for WebSockets (Production).
 - `GEMINI_API_KEY`: Google AI Studio API key.
+ - `RENDER_EXTERNAL_HOSTNAME`: (optional) Render hostname used to populate `ALLOWED_HOSTS` when deployed on Render.
+ - `GEMINI_TIMEOUT_SECONDS`: (optional) Timeout for AI calls (default set in settings).
+ - `GEMINI_MODEL_PRIORITY`: (optional) Comma-separated model list the AI service will try in order.
+
+### Render build & start (recommended)
+
+Set the service root to the repository subfolder: `Django-Backend`.
+
+Build command (Render):
+
+```
+pip install -r requirements.txt
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+```
+
+Start command (Render):
+
+```
+python -m daphne -b 0.0.0.0 -p $PORT triagesync_backend.config.asgi:application
+```
+
+Notes:
+- The app expects an ASGI server in production (Daphne is recommended and already added to `requirements.txt`).
+- `collectstatic` writes files to `STATIC_ROOT` (ensure `STATIC_ROOT` is set via environment / production settings).
+- If using a Procfile-style runner, use the same Daphne command but ensure `$PORT` is passed.
 
 ## 🧪 Testing
 

@@ -17,7 +17,7 @@ from io import BytesIO
 
 from asgiref.sync import iscoroutinefunction, markcoroutinefunction
 
-ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description"})
+ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description", "blood_type"})
 TRIAGE_PATH_PREFIX = "/api/v1/triage/"
 MAX_SYMPTOMS_LENGTH = 500
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH"})
@@ -102,6 +102,8 @@ class PayloadSanitizerMiddleware:
             warnings.append("age_missing")
         if sanitized.get("gender") in (None, ""):
             warnings.append("gender_missing")
+        if sanitized.get("blood_type") in (None, ""):
+            warnings.append("blood_type_missing")
         if warnings:
             request._triage_warning = warnings
 
