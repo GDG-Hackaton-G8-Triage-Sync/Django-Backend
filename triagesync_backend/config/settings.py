@@ -28,9 +28,33 @@ def env_list(name: str, default: list[str] | None = None) -> list[str]:
         return default or []
     return [item.strip() for item in value.split(",") if item.strip()]
 
+
+def normalize_host(value: str) -> str:
+    """Normalize host values for ALLOWED_HOSTS (strip scheme/path/port)."""
+    value = value.strip()
+    if not value:
+        return ""
+    if "://" in value:
+        parsed = urlparse(value)
+        return parsed.hostname or ""
+    if "/" in value:
+        parsed = urlparse(f"https://{value}")
+        return parsed.hostname or ""
+    return value.split(":")[0]
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 DEBUG = env_bool("DJANGO_DEBUG", True)
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["127.0.0.1", "localhost"])
+
+raw_allowed_hosts = env_list("DJANGO_ALLOWED_HOSTS", ["127.0.0.1", "localhost"])
+normalized_allowed_hosts = [normalize_host(host) for host in raw_allowed_hosts]
+
+# Render sets this automatically for web services.
+render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if render_hostname:
+    normalized_allowed_hosts.append(render_hostname)
+
+# Keep order but remove duplicates/empties.
+ALLOWED_HOSTS = list(dict.fromkeys([host for host in normalized_allowed_hosts if host]))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -130,7 +154,10 @@ STATIC_URL = "static/"
 # Use Path for BASE_DIR (pathlib.Path) so this works on all platforms.
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # Optional: include a project-level `static/` folder during development
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_DIRS = []
+project_static_dir = BASE_DIR / "static"
+if project_static_dir.exists():
+    STATICFILES_DIRS.append(project_static_dir)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "authentication.User"
