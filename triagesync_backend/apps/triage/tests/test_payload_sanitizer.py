@@ -42,13 +42,14 @@ def test_strips_disallowed_keys():
 def test_whitelisted_values_preserved():
     req = _post_json(
         "/api/v1/triage/ai/",
-        {"symptoms": "fever and cough", "age": 30, "gender": "F"},
+        {"symptoms": "fever and cough", "age": 30, "gender": "F", "blood_type": "A+"},
     )
     _run(req)
     sanitized = json.loads(req.body)
     assert sanitized["symptoms"] == "fever and cough"
     assert sanitized["age"] == 30
     assert sanitized["gender"] == "F"
+    assert sanitized["blood_type"] == "A+"
     assert not hasattr(req, "_triage_error")
     assert not hasattr(req, "_triage_warning")
 
@@ -112,7 +113,7 @@ def test_both_demographics_missing_lists_both_warnings():
     req = _post_json("/api/v1/triage/ai/", {"symptoms": "dizzy"})
     _run(req)
     warnings = getattr(req, "_triage_warning", [])
-    assert set(warnings) == {"age_missing", "gender_missing"}
+    assert set(warnings) == {"age_missing", "gender_missing", "blood_type_missing"}
 
 
 def test_control_chars_stripped():
