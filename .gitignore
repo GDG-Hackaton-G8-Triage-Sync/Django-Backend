@@ -1,3 +1,67 @@
+# Environment and secret files
+.env
+.env.*
+.envrc
+.DS_Store
+
+# Test output, coverage, and cache
+.pytest_cache/
+.coverage*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.vscode/
+*.log
+*.bak
+
+# Local/IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+
+# Compiled Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build/dist artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# SQLite/local DB
+*.sqlite3
+db.sqlite3
+
+# Local scripts or temp files not needed in production
+full_test_run.txt
+run_all_tests.ps1
+run_tests.ps1
+test_*.py
+test_*.bak
+verify_*.py
+check_*.py
+# Ignore all Markdown documentation except key files
+*.md
+!README.md
+!API_DOCUMENTATION.md
+!API_CONTRACT_COMPLETION_SUMMARY.md
+!FINAL_TEST_REPORT.md
+!IMPLEMENTATION_COMPLETE.md
+!DATABASE_CONNECTION_REPORT.md
+!INTEGRATION_REVIEW.md
+!LICENSE
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +269,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Kiro-generated files
+*_SUMMARY.md
+*_REPORT.md
+*_COMPLETE.md
+/.kiro/
+TASK2_COMPLETE.txt

@@ -1,0 +1,958 @@
+{
+  "info": {
+    "name": "TriageSync API Collection",
+    "description": "Comprehensive API testing for TriageSync Django Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "triagesync-api-v1",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url_local",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "base_url_prod",
+      "value": "https://django-backend-4r5p.onrender.com",
+      "type": "string"
+    },
+    {
+      "key": "base_url",
+      "value": "{{base_url_local}}",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "POST /api/v1/auth/login/ - Patient Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has tokens\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('access');",
+                  "    pm.expect(jsonData).to.have.property('refresh');",
+                  "});",
+                  "",
+                  "// Save access token for subsequent requests",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('patient_access_token', jsonData.access);",
+                  "pm.collectionVariables.set('patient_refresh_token', jsonData.refresh);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"patient_test\",\n  \"password\": \"testpass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login", ""]
+            },
+            "description": "Login as patient user to get JWT tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/auth/login/ - Staff Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Save staff access token",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('staff_access_token', jsonData.access);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff_test\",\n  \"password\": \"testpass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login", ""]
+            },
+            "description": "Login as staff user to test authorization"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Patient Endpoints",
+      "item": [
+        {
+          "name": "GET /api/v1/patients/profile/ - Get Patient Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has profile fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('date_of_birth');",
+                  "    pm.expect(jsonData).to.have.property('contact_info');",
+                  "    pm.expect(jsonData).to.have.property('user_id');",
+                  "    pm.expect(jsonData).to.have.property('username');",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "});",
+                  "",
+                  "// Save patient ID for subsequent tests",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set('patient_id', jsonData.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Get authenticated patient's profile"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/v1/patients/profile/ - Update Patient Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile updated successfully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.equal('John Doe Updated');",
+                  "    pm.expect(jsonData.contact_info).to.equal('555-1234');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe Updated\",\n  \"date_of_birth\": \"1990-05-15\",\n  \"contact_info\": \"555-1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Update authenticated patient's profile"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/profile/ - Unauthorized (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Test authentication requirement"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/profile/ - Forbidden (Staff Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message indicates permission denied\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staff_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "profile", ""]
+            },
+            "description": "Test that staff cannot access patient endpoints"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/history/ - Get Patient History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has submissions array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('submissions');",
+                  "    pm.expect(jsonData).to.have.property('count');",
+                  "    pm.expect(jsonData.submissions).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Save first submission ID if exists",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.submissions.length > 0) {",
+                  "    pm.collectionVariables.set('submission_id', jsonData.submissions[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/history/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "history", ""]
+            },
+            "description": "Get all patient's triage submissions"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/history/ - Empty History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Empty submissions array returned\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.submissions).to.be.an('array');",
+                  "    pm.expect(jsonData.count).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/history/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "history", ""]
+            },
+            "description": "Test patient with no submission history"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/current/ - Get Current Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has current_submission field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('current_submission');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test(\"If active session exists, has required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.current_submission !== null) {",
+                  "        pm.expect(jsonData.current_submission).to.have.property('id');",
+                  "        pm.expect(jsonData.current_submission).to.have.property('symptoms');",
+                  "        pm.expect(jsonData.current_submission).to.have.property('status');",
+                  "        pm.expect(['waiting', 'in_progress']).to.include(jsonData.current_submission.status);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/current/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "current", ""]
+            },
+            "description": "Get patient's most recent active submission"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/submissions/{id}/ - Get Submission Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Response has submission fields\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('id');",
+                  "        pm.expect(jsonData).to.have.property('symptoms');",
+                  "        pm.expect(jsonData).to.have.property('priority');",
+                  "        pm.expect(jsonData).to.have.property('urgency_score');",
+                  "        pm.expect(jsonData).to.have.property('status');",
+                  "        pm.expect(jsonData).to.have.property('created_at');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/submissions/{{submission_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "submissions", "{{submission_id}}", ""]
+            },
+            "description": "Get specific submission details"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/patients/submissions/999999/ - Submission Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/submissions/999999/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "patients", "submissions", "999999", ""]
+            },
+            "description": "Test non-existent submission ID"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Triage AI Endpoints",
+      "item": [
+        {
+          "name": "POST /api/v1/triage/ai/ - Critical Cardiac Case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "    pm.expect(jsonData).to.have.property('urgency_score');",
+                  "    pm.expect(jsonData).to.have.property('condition');",
+                  "    pm.expect(jsonData).to.have.property('category');",
+                  "    pm.expect(jsonData).to.have.property('is_critical');",
+                  "    pm.expect(jsonData).to.have.property('explanation');",
+                  "    pm.expect(jsonData).to.have.property('recommended_action');",
+                  "    pm.expect(jsonData).to.have.property('reason');",
+                  "    pm.expect(jsonData).to.have.property('source');",
+                  "});",
+                  "",
+                  "pm.test(\"Priority level is valid (1-5)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 5);",
+                  "});",
+                  "",
+                  "pm.test(\"Urgency score is valid (0-100)\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.urgency_score).to.be.within(0, 100);",
+                  "});",
+                  "",
+                  "pm.test(\"Category is valid enum\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var validCategories = ['Cardiac', 'Respiratory', 'Trauma', 'Neurological', 'General'];",
+                  "    pm.expect(validCategories).to.include(jsonData.category);",
+                  "});",
+                  "",
+                  "pm.test(\"is_critical is boolean\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(typeof jsonData.is_critical).to.equal('boolean');",
+                  "});",
+                  "",
+                  "pm.test(\"Explanation is non-empty array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.explanation).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"Critical cardiac case should have high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"chest pain radiating to left arm, sweating\",\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test critical cardiac case with emergency symptoms"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Respiratory Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Respiratory emergency should be critical\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.equal(1);",
+                  "    pm.expect(jsonData.is_critical).to.be.true;",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(90);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"not breathing, unconscious\",\n  \"age\": 30,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test respiratory arrest emergency"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Minor Symptoms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Minor symptoms should have low priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(4, 5);",
+                  "    pm.expect(jsonData.is_critical).to.be.false;",
+                  "    pm.expect(jsonData.urgency_score).to.be.below(40);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"mild headache and runny nose\",\n  \"age\": 25,\n  \"gender\": \"other\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test minor symptoms with low priority"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Missing Symptoms (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test validation error for missing symptoms"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Symptoms Too Long (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error indicates symptoms too long\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error).to.include('too long');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\",\n  \"age\": 45,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test validation error for symptoms exceeding 500 characters"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Age Normalization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Invalid age handled gracefully\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"fever and cough\",\n  \"age\": 999,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test age normalization (invalid age should be handled)"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Gender Normalization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Gender variations handled\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('priority_level');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"dizziness and nausea\",\n  \"age\": 35,\n  \"gender\": \"nb\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test gender normalization (nb should map to other)"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Stroke Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Stroke should be critical\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(85);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"facial droop, slurred speech, stroke symptoms\",\n  \"age\": 65,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test stroke emergency detection"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Seizure Emergency",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Seizure should be high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+                  "    pm.expect(jsonData.urgency_score).to.be.above(80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"seizure, convulsions\",\n  \"age\": 28,\n  \"gender\": \"male\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test seizure emergency detection"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/triage/ai/ - Medium Priority Fever",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"High fever should be medium-high priority\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.priority_level).to.be.within(2, 3);",
+                  "    pm.expect(jsonData.urgency_score).to.be.within(60, 80);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symptoms\": \"high fever above 40 degrees, severe headache\",\n  \"age\": 12,\n  \"gender\": \"female\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/triage/ai/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "triage", "ai", ""]
+            },
+            "description": "Test high fever medium priority case"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
