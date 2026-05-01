@@ -21,6 +21,12 @@ from triagesync_backend.apps.realtime.services.broadcast_service import broadcas
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_priority_update
 from triagesync_backend.apps.notifications.services.notification_service import NotificationService
 from django.contrib.auth import get_user_model
+import logging
+
+from . import keyword_extraction
+
+
+logger = logging.getLogger("triage.enrichment")
 
 User = get_user_model()
 
@@ -112,10 +118,25 @@ def safe_infer_priority(symptoms: str) -> dict:
     Falls back to default values if AI fails or returns invalid data.
     """
     try:
-        ai_output = infer_priority(symptoms)
-        if validate_ai_output(ai_output):
-            return ai_output
-        # AI returned something but it's malformed — use fallback
+        # Prefer the full AI recommendation (Gemini) but keep the legacy
+        # `infer_priority` compatibility shape for callers/tests. `get_triage_recommendation`
+        # returns the normalized M5 contract (priority_level / urgency_score / condition).
+        ai_raw = get_triage_recommendation(symptoms)
+
+        # If AI returned an error envelope, fall back immediately.
+        if not isinstance(ai_raw, dict) or ai_raw.get("error"):
+            return get_fallback_ai_output()
+
+        # Normalize Gemini/M5 shape into legacy shape expected by validators/tests.
+        legacy = {
+            "priority": int(ai_raw.get("priority_level") or ai_raw.get("priority") or calculate_priority(ai_raw.get("urgency_score", 50))),
+            "urgency_score": int(ai_raw.get("urgency_score", 50)),
+            "condition": ai_raw.get("condition", "Unknown"),
+        }
+
+        if validate_ai_output(legacy):
+            return legacy
+
         return get_fallback_ai_output()
     except Exception:
         return get_fallback_ai_output()
@@ -383,3 +404,81 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
     }
 
     return response
+
+
+def enrich_triage_response(ai_response: dict, patient) -> dict:
+    """Enrich AI triage response with extracted keywords, flags, and patient-derived info.
+
+    Returns a dictionary with keys used by tests and the UI:
+    - critical_keywords: list[str]
+    - requires_immediate_attention: bool
+    - specialist_referral_suggested: bool
+    - has_allergies: bool
+    - risk_factors: list[str]
+
+    This function is defensive: on any exception it returns safe defaults and logs the error.
+    """
+    defaults = {
+        "critical_keywords": [],
+        "requires_immediate_attention": False,
+        "specialist_referral_suggested": False,
+        "has_allergies": False,
+        "risk_factors": [],
+    }
+
+    try:
+        explanation = ai_response.get("explanation") if isinstance(ai_response, dict) else None
+        recommended_action = ai_response.get("recommended_action", "") if isinstance(ai_response, dict) else ""
+
+        # Critical keywords from AI explanation (list of strings)
+        critical_keywords = []
+        if isinstance(explanation, list) and explanation:
+            # Join explanation snippets for robust matching
+            joined = " \n ".join([str(s) for s in explanation if isinstance(s, str)])
+            critical_keywords = keyword_extraction.extract_keywords(joined, keyword_extraction.CRITICAL_KEYWORDS)
+            if critical_keywords:
+                logger.info(
+                    "Critical keywords detected in AI explanation",
+                    extra={"critical_keywords": critical_keywords, "keyword_count": len(critical_keywords)}
+                )
+
+        # Urgency detection from recommended_action
+        ra_lower = recommended_action.lower() if isinstance(recommended_action, str) else ""
+        requires_immediate = any(indicator in ra_lower for indicator in keyword_extraction.URGENCY_INDICATORS)
+        if requires_immediate:
+            logger.info("Immediate attention flag set", extra={"recommended_action": recommended_action})
+
+        # Specialist referral detection
+        specialist_referral = any(indicator in ra_lower for indicator in keyword_extraction.SPECIALIST_INDICATORS)
+        if specialist_referral:
+            logger.info("Specialist referral flag set", extra={"recommended_action": recommended_action})
+
+        # Patient-derived flags
+        has_allergies = False
+        try:
+            if patient and hasattr(patient, "allergies") and isinstance(patient.allergies, str):
+                if patient.allergies.strip():
+                    has_allergies = True
+        except Exception:
+            has_allergies = False
+
+        # Risk factors from patient health_history
+        risk_factors = []
+        try:
+            if patient and hasattr(patient, "health_history") and isinstance(patient.health_history, str):
+                risk_factors = keyword_extraction.extract_keywords(patient.health_history, keyword_extraction.CHRONIC_CONDITIONS)
+                if risk_factors:
+                    logger.info("Risk factors detected", extra={"risk_factors": risk_factors})
+        except Exception:
+            risk_factors = []
+
+        return {
+            "critical_keywords": critical_keywords,
+            "requires_immediate_attention": requires_immediate,
+            "specialist_referral_suggested": specialist_referral,
+            "has_allergies": has_allergies,
+            "risk_factors": risk_factors,
+        }
+    except Exception:
+        logger.error("Triage response enrichment failed", exc_info=True)
+        return defaults
