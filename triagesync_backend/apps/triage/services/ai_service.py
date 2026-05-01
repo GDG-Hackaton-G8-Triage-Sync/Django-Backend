@@ -225,7 +225,7 @@ def call_gemini_api(prompt, model_name=None, user_description=None):
     errors = []
     error_types = set()
     max_retries = _get_setting("GEMINI_MAX_RETRIES", 2)
-    configured_timeout = _get_setting("GEMINI_TIMEOUT_SECONDS", 8)
+    configured_timeout = _get_setting("GEMINI_TIMEOUT_SECONDS", 30)
     # Safety floor: historical bug reports showed 8s timing out valid AI calls.
     # Keep settings support, but never go below the minimum operational timeout.
     min_timeout_seconds = _get_setting("GEMINI_MIN_TIMEOUT_SECONDS", 30)

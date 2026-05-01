@@ -242,7 +242,8 @@ else:
 # Total attempts per model (not retries-after-initial). Value N means N calls.
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "2"))
 # Per-call wall-clock budget before we abandon this model and move on.
-GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "8"))
+# Default of 30 seconds accommodates typical Gemini API response times.
+GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
 # Explicit allow-list; replaces the old 'flash in name' heuristic.
 # Each model has an independent free-tier quota, so the more we list, the more
 # resilient the pipeline is when one model's daily limit is exhausted. Order is
