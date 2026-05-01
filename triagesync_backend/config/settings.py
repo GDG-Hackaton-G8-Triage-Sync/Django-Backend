@@ -126,6 +126,11 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+# Directory where `collectstatic` will gather static files for production
+# Use Path for BASE_DIR (pathlib.Path) so this works on all platforms.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+# Optional: include a project-level `static/` folder during development
+STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "authentication.User"
