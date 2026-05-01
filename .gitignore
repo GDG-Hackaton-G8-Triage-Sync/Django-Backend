@@ -278,3 +278,19 @@ __marimo__/
 *_COMPLETE.md
 /.kiro/
 TASK2_COMPLETE.txt
+fix_test_unicode.py
+fix_test_unicode.py
+fix_test_unicode.py
+list_gemini_models.py
+test_api_ai.py
+test_env.py
+test_gemini_key.py
+test_integration_websocket_events.py.new
+
+# Root-level local verification and diagnostics scripts
+/fix_test_unicode.py
+/list_gemini_models.py
+/test_api_ai.py
+/test_env.py
+/test_gemini_key.py
+/test_integration_websocket_events.py.new
