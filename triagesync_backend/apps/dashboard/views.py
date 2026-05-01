@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from triagesync_backend.apps.authentication.permissions import IsMedicalStaff, IsStaffOrAdmin
+from triagesync_backend.apps.authentication.permissions import IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, validation_error_response, not_found_response
 from .serializers import DashboardPatientSerializer
@@ -21,7 +21,7 @@ class StaffPatientQueueView(APIView):
     Staff patient queue with pagination
     Query params: priority, status, page, page_size (default 20, max 100)
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
     pagination_class = StandardResultsSetPagination
 
     def get(self, request):
@@ -43,7 +43,7 @@ class UpdatePatientStatusView(APIView):
     """
     PATCH /api/v1/staff/patient/{id}/status/
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def patch(self, request, id):
         new_status = request.data.get("status")
@@ -70,7 +70,7 @@ class AdminOverviewView(APIView):
     """
     GET /api/v1/admin/overview/
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def get(self, request):
         data = get_admin_overview()
@@ -80,14 +80,14 @@ class AdminAnalyticsView(APIView):
     """
     GET /api/v1/admin/analytics/
     """
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def get(self, request):
         data = get_admin_analytics()
         return Response(data)
     
 class UpdatePatientPriorityView(APIView):
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def patch(self, request, id):
         priority = request.data.get("priority")
@@ -127,7 +127,7 @@ class UpdatePatientPriorityView(APIView):
             )
         
 class VerifyPatientView(APIView):
-    permission_classes = [IsAuthenticated, IsMedicalStaff]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def patch(self, request, id):
         try:
