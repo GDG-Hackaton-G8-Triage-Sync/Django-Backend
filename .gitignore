@@ -52,6 +52,8 @@ test_*.py
 test_*.bak
 verify_*.py
 check_*.py
+*_verification.py
+task_*_verification.py
 # Ignore all Markdown documentation except key files
 *.md
 !README.md
