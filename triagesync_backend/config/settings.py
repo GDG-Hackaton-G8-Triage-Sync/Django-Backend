@@ -53,6 +53,7 @@ if render_hostname:
 ALLOWED_HOSTS = list(dict.fromkeys([host for host in normalized_allowed_hosts if host]))
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
