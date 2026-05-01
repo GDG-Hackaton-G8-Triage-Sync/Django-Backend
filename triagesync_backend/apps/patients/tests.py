@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from django.utils import timezone
 from triagesync_backend.apps.authentication.models import User
-from .models import Patient, PatientSubmission, StaffNote, VitalsLog
+from triagesync_backend.apps.patients.models import Patient, PatientSubmission, StaffNote, VitalsLog
 
 class ClinicalWorkflowTests(TestCase):
     def setUp(self):

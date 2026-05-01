@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from triagesync_backend.apps.authentication.models import User
-from .models import AuditLog, SystemConfig
+from triagesync_backend.apps.api_admin.models import AuditLog, SystemConfig
 
 class AdminPortalTests(TestCase):
     def setUp(self):
