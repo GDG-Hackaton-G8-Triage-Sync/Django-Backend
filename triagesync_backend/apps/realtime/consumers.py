@@ -26,22 +26,36 @@ class TriageEventsConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         # Access authenticated user from scope (provided by JWTAuthMiddleware)
-        user = self.scope.get('user')
+        self.user = self.scope.get('user')
         
-        if user and user.is_authenticated:
+        if self.user and self.user.is_authenticated:
             logger.info(
-                f"WebSocket connection established for user {user.username} "
-                f"(role: {user.role}, channel: {self.channel_name})"
+                f"WebSocket connection established for user {self.user.username} "
+                f"(role: {self.user.role}, channel: {self.channel_name})"
             )
+            
+            # 1. Join global triage events group (only for staff roles)
+            if self.user.role in ['admin', 'doctor', 'nurse', 'staff']:
+                await self.channel_layer.group_add(TRIAGE_GROUP, self.channel_name)
+            
+            # 2. Join private user notification group (for all users)
+            self.user_group = f"user_{self.user.id}"
+            await self.channel_layer.group_add(self.user_group, self.channel_name)
+            
+            await self.accept()
         else:
             # This should not happen if middleware is working correctly
-            logger.warning(f"WebSocket connection without authenticated user (channel: {self.channel_name})")
-        
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+            logger.warning(f"WebSocket connection attempt without authenticated user (channel: {self.channel_name})")
+            await self.close()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        # Leave global triage group if staff
+        if hasattr(self, 'user') and self.user.role in ['admin', 'doctor', 'nurse', 'staff']:
+            await self.channel_layer.group_discard(TRIAGE_GROUP, self.channel_name)
+        
+        # Leave private user group
+        if hasattr(self, 'user_group'):
+            await self.channel_layer.group_discard(self.user_group, self.channel_name)
 
     async def receive(self, text_data=None, bytes_data=None):
         """
@@ -51,9 +65,14 @@ class TriageEventsConsumer(AsyncWebsocketConsumer):
         pass
 
     # --- Group message handlers ---
-    # Each method name maps to the "type" field in group_send calls.
-    # "triage_event" maps to triage_event() via Django Channels convention.
 
     async def triage_event(self, event):
-        """Forwards any broadcast payload to the connected WebSocket client."""
+        """Forwards global broadcast payloads to staff clients."""
         await self.send(text_data=json.dumps(event["payload"]))
+
+    async def notification_message(self, event):
+        """Forwards private notification payloads to the specific user."""
+        await self.send(text_data=json.dumps({
+            "type": "notification",
+            "data": event["notification"]
+        }))

@@ -108,16 +108,19 @@ class JWTAuthMiddleware:
             user: Authenticated user object
             
         Returns:
-            True if role is staff/nurse/doctor/admin, False otherwise
+            True if role is authorized, False otherwise
         """
+        # All authenticated roles are allowed to connect.
+        # Specific event filtering is handled in the consumer layer.
         AUTHORIZED_ROLES = {
             User.Roles.ADMIN,
             User.Roles.DOCTOR,
             User.Roles.NURSE,
-            # Note: 'staff' role mentioned in requirements but not in User.Roles enum
-            # Using string literal for now - this should be clarified during implementation
+            User.Roles.PATIENT,
             'staff',
         }
+        
+        return user.role in AUTHORIZED_ROLES
         
         return user.role in AUTHORIZED_ROLES
     
