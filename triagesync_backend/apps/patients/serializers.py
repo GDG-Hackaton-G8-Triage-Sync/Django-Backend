@@ -1,5 +1,26 @@
 from rest_framework import serializers
-from .models import PatientSubmission
+from .models import PatientSubmission, StaffNote, VitalsLog
+
+class StaffNoteSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source='author.username', read_only=True)
+
+    class Meta:
+        model = StaffNote
+        fields = ['id', 'author_name', 'content', 'is_internal', 'created_at']
+        read_only_fields = ['id', 'author_name', 'created_at']
+
+
+class VitalsLogSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source='recorded_by.username', read_only=True)
+
+    class Meta:
+        model = VitalsLog
+        fields = [
+            'id', 'recorded_by_name', 'systolic_bp', 'diastolic_bp', 
+            'heart_rate', 'temperature_c', 'respiratory_rate', 
+            'oxygen_saturation', 'recorded_at'
+        ]
+        read_only_fields = ['id', 'recorded_by_name', 'recorded_at']
 
 class TriageSubmissionSerializer(serializers.Serializer):
     symptoms = serializers.CharField(max_length=500)

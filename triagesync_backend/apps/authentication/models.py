@@ -13,6 +13,10 @@ class User(AbstractUser):
         choices=Roles.choices,
         default=Roles.PATIENT
     )
+    
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.TextField(blank=True, null=True)
+
 
     def is_doctor(self):
         return self.role == self.Roles.DOCTOR

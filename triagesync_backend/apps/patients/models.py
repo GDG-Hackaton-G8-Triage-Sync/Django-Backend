@@ -66,6 +66,13 @@ class PatientSubmission(models.Model):
     )
 
     # STAFF ACTIONS
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_submissions"
+    )
     verified_by_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -81,3 +88,32 @@ class PatientSubmission(models.Model):
 
     def __str__(self) -> str:
         return f"Submission {self.id} by {self.patient.name}"
+
+
+class StaffNote(models.Model):
+    submission = models.ForeignKey(PatientSubmission, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField()
+    is_internal = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class VitalsLog(models.Model):
+    submission = models.ForeignKey(PatientSubmission, on_delete=models.CASCADE, related_name="vitals_history")
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    
+    systolic_bp = models.IntegerField(null=True, blank=True)
+    diastolic_bp = models.IntegerField(null=True, blank=True)
+    heart_rate = models.IntegerField(null=True, blank=True)
+    temperature_c = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    respiratory_rate = models.IntegerField(null=True, blank=True)
+    oxygen_saturation = models.IntegerField(null=True, blank=True)
+    
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-recorded_at']
+
