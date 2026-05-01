@@ -10,11 +10,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-print("CWD:", os.getcwd())
-print("BASE_DIR:", BASE_DIR)
-print("ENV FILE EXISTS:", os.path.exists(BASE_DIR / ".env"))
-print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
-
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -43,7 +38,8 @@ def normalize_host(value: str) -> str:
     return value.split(":")[0]
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
-DEBUG = env_bool("DJANGO_DEBUG", True)
+# Default to False in code; enable DEBUG explicitly via environment for development only.
+DEBUG = env_bool("DJANGO_DEBUG", False)
 
 raw_allowed_hosts = env_list("DJANGO_ALLOWED_HOSTS", ["127.0.0.1", "localhost"])
 normalized_allowed_hosts = [normalize_host(host) for host in raw_allowed_hosts]
@@ -67,6 +63,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Enable token blacklist support for rotating refresh tokens
+    "rest_framework_simplejwt.token_blacklist",
     "triagesync_backend.apps.core",
     "triagesync_backend.apps.authentication",
     "triagesync_backend.apps.patients",
@@ -157,8 +155,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Optional: include a project-level `static/` folder during development
 STATICFILES_DIRS = []
 project_static_dir = BASE_DIR / "static"
+
 if project_static_dir.exists():
     STATICFILES_DIRS.append(project_static_dir)
+    
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "authentication.User"
@@ -174,9 +174,12 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("ACCESS_TOKEN_MINUTES", "30"))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("REFRESH_TOKEN_DAYS", "1"))),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Rotate refresh tokens and blacklist old ones to reduce token replay risk
+    "ROTATE_REFRESH_TOKENS": env_bool("ROTATE_REFRESH_TOKENS", True),
+    "BLACKLIST_AFTER_ROTATION": env_bool("BLACKLIST_AFTER_ROTATION", True),
 }
 
 REDIS_URL = os.getenv("REDIS_URL")
@@ -200,6 +203,40 @@ else:
 
 CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# -------------------- Production security defaults --------------------
+# Only enable strict production settings when DEBUG is False. Environment
+# variables can override individual behaviours if needed.
+if not DEBUG:
+    # Redirect HTTP → HTTPS. Default to enabled only when Render provides
+    # a hostname (so local development without HTTPS isn't forced to redirect).
+    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", bool(render_hostname))
+
+    # Set HSTS for browsers
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", True)
+
+    # Cookies
+    SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", True)
+    CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", True)
+    SESSION_COOKIE_HTTPONLY = env_bool("SESSION_COOKIE_HTTPONLY", True)
+
+    # X-Frame-Options and related headers
+    X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "DENY")
+    SECURE_CONTENT_TYPE_NOSNIFF = env_bool("SECURE_CONTENT_TYPE_NOSNIFF", True)
+    SECURE_BROWSER_XSS_FILTER = env_bool("SECURE_BROWSER_XSS_FILTER", True)
+
+    # If deployment sits behind a proxy (Render), honor X-Forwarded-Proto
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+else:
+    # Development-friendly defaults
+    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
+    SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
+    CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
+    SESSION_COOKIE_HTTPONLY = env_bool("SESSION_COOKIE_HTTPONLY", True)
+
 
 # --- Gemini / AI service tuning -------------------------------------------
 # Total attempts per model (not retries-after-initial). Value N means N calls.
