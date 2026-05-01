@@ -1,7 +1,7 @@
 """Payload sanitization middleware - moved from triage app to core app.
 
 Owns the input gate to the AI prompt: enforces a strict whitelist of allowed
-keys ({age, gender, symptoms}) on inbound JSON, strips ASCII control
+keys ({age, gender, blood_type, symptoms}) on inbound JSON, strips ASCII control
 characters, and caps symptoms length. Sets request-scoped attributes
 (``_triage_error``, ``_triage_warning``) that downstream views consume.
 

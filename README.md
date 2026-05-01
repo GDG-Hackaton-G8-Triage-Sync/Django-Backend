@@ -56,6 +56,7 @@ python -m daphne -b 0.0.0.0 -p $PORT triagesync_backend.config.asgi:application
 
 Notes:
 - The app expects an ASGI server in production (Daphne is recommended and already added to `requirements.txt`).
+- Daphne is a server/runtime dependency, not a Django app, so it should not be added to `INSTALLED_APPS`.
 - `collectstatic` writes files to `STATIC_ROOT` (ensure `STATIC_ROOT` is set via environment / production settings).
 - If using a Procfile-style runner, use the same Daphne command but ensure `$PORT` is passed.
 

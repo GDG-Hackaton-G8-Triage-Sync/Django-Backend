@@ -210,6 +210,14 @@ class TriagePDFExtractView(APIView):
                 pdf_gender = patient.gender
             if not pdf_blood_type and getattr(patient, "blood_type", None):
                 pdf_blood_type = patient.blood_type
+        # Build warnings list (middleware doesn't run on multipart)
+        warnings = []
+        if pdf_age in (None, ""):
+            warnings.append("age_missing")
+        if pdf_gender in (None, ""):
+            warnings.append("gender_missing")
+        if pdf_blood_type in (None, ""):
+            warnings.append("blood_type_missing")
         prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender, blood_type=pdf_blood_type)
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
@@ -243,6 +251,9 @@ class TriagePDFExtractView(APIView):
         if serializer.is_valid():
             response_data = dict(serializer.data)
             response_data["source"] = "ai"
+            # Include warnings in response
+            if warnings:
+                response_data["warning"] = warnings
             # Return flat structure (no envelope)
             return Response(response_data)
 
