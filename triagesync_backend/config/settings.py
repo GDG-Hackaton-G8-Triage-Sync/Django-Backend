@@ -149,7 +149,7 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 # Directory where `collectstatic` will gather static files for production
 # Use Path for BASE_DIR (pathlib.Path) so this works on all platforms.
 STATIC_ROOT = BASE_DIR / "staticfiles"
