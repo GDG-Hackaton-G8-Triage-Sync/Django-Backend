@@ -286,7 +286,24 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
         condition = ai_payload["condition"]
         source = ai_payload["source"]
     else:
-        ai_output = infer_priority(clean_symptoms)
+        ai_output = get_triage_recommendation(clean_symptoms)
+
+        # If Gemini fails (error envelope / invalid payload), fall back to
+        # deterministic defaults so triage remains available.
+        if not isinstance(ai_output, dict) or ai_output.get("error"):
+            fallback = get_fallback_ai_output()
+            ai_output = {
+                "urgency_score": fallback.get("urgency_score", 50),
+                "condition": fallback.get("condition", "Unknown"),
+                "category": "General",
+                "explanation": ["AI unavailable; fallback triage applied"],
+                "recommended_action": "Staff review required",
+                "reason": "Fallback applied because AI output was unavailable or invalid.",
+                "priority_level": calculate_priority(fallback.get("urgency_score", 50)),
+                "is_critical": fallback.get("urgency_score", 50) >= PRIORITY_THRESHOLDS["critical"],
+                "source": "AI_FALLBACK",
+            }
+
         # Ensure ai_output is a dictionary with the expected keys
         if isinstance(ai_output, dict):
             urgency_score = ai_output.get("urgency_score", 50)
@@ -307,9 +324,9 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
                     elif field == "reason":
                         ai_payload[field] = "AI output missing reason."
                     elif field == "priority_level":
-                        ai_payload[field] = 5
+                        ai_payload[field] = calculate_priority(urgency_score)
                     elif field == "is_critical":
-                        ai_payload[field] = False
+                        ai_payload[field] = urgency_score >= PRIORITY_THRESHOLDS["critical"]
                     elif field == "source":
                         ai_payload[field] = "AI_SYSTEM"
         else:
@@ -322,8 +339,8 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
                 "explanation": ["AI output missing or invalid"],
                 "recommended_action": "Staff review required",
                 "reason": "AI output missing or invalid.",
-                "priority_level": 5,
-                "is_critical": False,
+                "priority_level": calculate_priority(urgency_score),
+                "is_critical": urgency_score >= PRIORITY_THRESHOLDS["critical"],
                 "source": "AI_SYSTEM"
             }
         source = ai_payload.get("source", "AI_SYSTEM")
