@@ -112,6 +112,11 @@ Notes:
 - `collectstatic` writes files to `STATIC_ROOT` (ensure `STATIC_ROOT` is set via environment / production settings).
 - If using a Procfile-style runner, use the same Daphne command but ensure `$PORT` is passed.
 
+### Base URLs
+
+- **Development**: `http://localhost:8000`
+- **Production**: `https://django-backend-subb.onrender.com/`
+
 ## 🧪 Testing
 
 The backend includes a comprehensive test suite (Unit, Integration, and AI service tests).
