@@ -72,6 +72,8 @@ python manage.py collectstatic --noinput
 - `POST /api/v1/triage/ai/` — Standalone AI triage analysis (can be unauthenticated; patient fields optional if authenticated).
 - `POST /api/v1/triage/pdf-extract/` — Upload PDF for symptom extraction (multipart/form-data).
 
+Triage submissions may include a supporting `photo` upload and optional `photo_name`. Uploaded files are stored under `triage_photos/`, and the backend keeps `recommended_action` with the submission so staff views and notifications can show the AI's suggested next step.
+
 - Staff endpoints under `/api/v1/dashboard/staff/` include queue listing, priority/status updates, and verification endpoints.
 - Admin endpoints under `/api/v1/admin/` provide analytics and system overview.
 
@@ -157,6 +159,7 @@ Success (201):
   "id": 123,
   "description": "Severe chest pain...",
   "priority": 1,
+  "recommended_action": "Immediate emergency care",
   "urgency_score": 95,
   "condition": "Acute Cardiac Event",
   "status": "waiting",

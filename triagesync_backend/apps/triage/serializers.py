@@ -24,6 +24,7 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
             "id",
             "description",  # API field name
             "priority",
+            "recommended_action",
             "urgency_score", 
             "condition",
             "status",

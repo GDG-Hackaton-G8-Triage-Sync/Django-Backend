@@ -43,6 +43,17 @@ Resolved values are normalized before the AI call (age bounds, canonical gender,
 If conflicting demographics are detected between extracted and profile values (and no explicit values were sent), the endpoint returns a conflict response and asks the client to clarify.
 Note: the AI triage endpoint accepts an explicit `symptoms`/`description` field; authenticated patient profile fields are merged as fallback only when explicit values are not provided.
 
+## Triage Submission Response
+
+`POST /api/v1/triage/` stores the AI output on the patient submission record and now returns the `recommended_action` alongside the priority, urgency score, and condition.
+That field is also propagated into notification metadata so staff-facing alerts can show the same recommended next step the AI generated.
+
+## Photo Upload Usage
+
+The optional `photo` upload on a patient submission is used to attach a supporting clinical image to the triage record.
+The backend stores the uploaded file under `triage_photos/` and preserves the original `photo_name` for display/reference.
+Use it when the case benefits from visual context such as a wound, rash, swelling, or injury photo.
+
 ## PDF Triage Behavior
 
 `POST /api/v1/triage/pdf-extract/` accepts multipart PDF uploads and now requires a user-entered symptoms/description prompt alongside the file. The endpoint behavior is:

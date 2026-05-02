@@ -73,10 +73,13 @@ class TriageAIView(APIView):
         patient_context = None
         user = request.user if request.user and request.user.is_authenticated else None
         if user:
-            try:
-                patient = Patient.objects.filter(user=user).first()
-            except Exception:
-                patient = None
+            # Prefer the OneToOne `patient_profile` relation when present (consistent with other views)
+            patient = getattr(user, "patient_profile", None)
+            if patient is None:
+                try:
+                    patient = Patient.objects.filter(user=user).first()
+                except Exception:
+                    patient = None
 
             if patient:
                 profile_data["age"] = getattr(patient, "age", None)
@@ -93,6 +96,20 @@ class TriageAIView(APIView):
                     "current_medications": getattr(patient, "current_medications", None),
                     "bad_habits": getattr(patient, "bad_habits", None),
                 }
+
+            # Normalize any profile-provided demographics early so fallback logic uses canonical values
+            try:
+                profile_data["age"] = normalize_age(profile_data.get("age"))
+            except Exception:
+                profile_data["age"] = None
+            try:
+                profile_data["gender"] = normalize_gender(profile_data.get("gender"))
+            except Exception:
+                profile_data["gender"] = None
+            try:
+                profile_data["blood_type"] = normalize_blood_type(profile_data.get("blood_type"))
+            except Exception:
+                profile_data["blood_type"] = None
 
         if not age and not gender and not blood_type:
             conflict_info = detect_conflicts(ai_extracted, profile_data)
@@ -153,6 +170,12 @@ class TriageAIView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            logger = logging.getLogger("triage.ai")
+            # Emit diagnostics to help tests verify fallback behavior
+            logger.warning("TriageAIView: profile_data=%s", profile_data)
+            logger.warning("TriageAIView: demographics before call: age=%s gender=%s blood_type=%s", age, gender, blood_type)
+            logger.warning("TriageAIView: patient_context=%s", patient_context)
+
             try:
                 result = get_triage_recommendation(
                     symptoms,
@@ -162,7 +185,16 @@ class TriageAIView(APIView):
                     patient_context=patient_context,
                 )
             except TypeError as exc:
-                if "blood_type" in str(exc) or "patient_context" in str(exc) or "unexpected keyword argument" in str(exc):
+                # Backwards-compatibility: try progressively simpler signatures.
+                msg = str(exc)
+                # If only `patient_context` isn't accepted, try keeping blood_type.
+                if "patient_context" in msg:
+                    try:
+                        result = get_triage_recommendation(symptoms, age=age, gender=gender, blood_type=blood_type)
+                    except TypeError:
+                        result = get_triage_recommendation(symptoms, age=age, gender=gender)
+                elif "blood_type" in msg or "unexpected keyword argument" in msg:
+                    # Older implementations may not accept blood_type; fall back without it.
                     result = get_triage_recommendation(symptoms, age=age, gender=gender)
                 else:
                     raise
@@ -472,6 +504,7 @@ class TriageSubmissionView(APIView):
             priority = triage_data.get("priority", 3)
             urgency_score = triage_data.get("urgency_score", 50)
             condition = ai_contract.get("condition", "Unknown")
+            recommended_action = ai_contract.get("recommended_action")
             triage_status = triage_data.get("status", "waiting")
 
             # Save to database (Member 7's model) with enriched AI fields
@@ -506,6 +539,7 @@ class TriageSubmissionView(APIView):
                         "submission_id": submission.id,
                         "priority": priority,
                         "condition": condition,
+                        "recommended_action": recommended_action,
                         "action_type": "submission_created"
                     }
                 )
@@ -524,6 +558,7 @@ class TriageSubmissionView(APIView):
                             "priority": priority,
                             "urgency_score": urgency_score,
                             "condition": condition,
+                            "recommended_action": recommended_action,
                             "alert_type": "critical_submission"
                         }
                     )
@@ -539,6 +574,7 @@ class TriageSubmissionView(APIView):
                 "id": submission.id,
                 "description": description,  # API field name
                 "priority": priority,
+                "recommended_action": recommended_action,
                 "urgency_score": urgency_score,
                 "condition": condition,
                 "status": triage_status,
