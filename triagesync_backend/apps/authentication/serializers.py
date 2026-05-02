@@ -97,11 +97,16 @@ class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField()
 
-    def validate(self, data):
-        user = authenticate(**data)
+    def validate(self, attrs):
+        user = authenticate(
+            request=self.context.get("request"),
+            username=attrs.get("username"),
+            password=attrs.get("password"),
+        )
         if not user:
             raise serializers.ValidationError("Invalid credentials")
-        return user
+        attrs["user"] = user
+        return attrs
 
 
 class GenericProfileSerializer(serializers.Serializer):

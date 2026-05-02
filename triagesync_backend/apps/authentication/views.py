@@ -108,28 +108,36 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
     
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
+        try:
+            serializer = LoginSerializer(data=request.data, context={"request": request})
 
-        if not serializer.is_valid():
+            if not serializer.is_valid():
+                return error_response(
+                    code="AUTHENTICATION_FAILED",
+                    message="Invalid username or password",
+                    details={},
+                    status_code=status.HTTP_401_UNAUTHORIZED
+                )
+
+            user = serializer.validated_data["user"]
+            tokens = get_tokens_for_user(user)
+
+            # Return direct flat structure per API contract
+            return Response({
+                "access_token": tokens['access'],
+                "refresh_token": tokens['refresh'],
+                "role": user.role,
+                "user_id": user.id,
+                "name": user.username,
+                "email": user.email
+            })
+        except Exception:
             return error_response(
-                code="AUTHENTICATION_FAILED",
-                message="Invalid username or password",
+                code="INTERNAL_SERVER_ERROR",
+                message="Login failed due to an unexpected server error",
                 details={},
-                status_code=status.HTTP_401_UNAUTHORIZED
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-        user = serializer.validated_data
-        tokens = get_tokens_for_user(user)
-
-        # Return direct flat structure per API contract
-        return Response({
-            "access_token": tokens['access'],
-            "refresh_token": tokens['refresh'],
-            "role": user.role,
-            "user_id": user.id,
-            "name": user.username,
-            "email": user.email
-        })
 
 
 class RefreshTokenView(TokenRefreshView):
