@@ -299,3 +299,5 @@ triagesync_backend/apps/triage/tests/test_payload_sanitizer.py
 
 reports/TRIAGE_EVENT_FLOW_VERIFICATION.md
 docs/STAFF_TRIAGE_INTEGRATION.md
+reports/INTEGRATION_HEALTH_REPORT.md
+reports/OPTIMIZATION_PLAN.md
