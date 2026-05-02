@@ -317,9 +317,3 @@ LOGGING = {
         'level': 'WARNING',
     },
 }
-
-
-
-
-D J A N G O _ A L L O W E D _ H O S T S   =   [ ' d j a n g o - b a c k e n d - 4 r 5 p . o n r e n d e r . c o m ' ,   ' l o c a l h o s t ' ,   ' 1 2 7 . 0 . 0 . 1 ' ]  
- 
