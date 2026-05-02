@@ -75,13 +75,58 @@ python manage.py collectstatic --noinput
 - Staff endpoints under `/api/v1/dashboard/staff/` include queue listing, priority/status updates, and verification endpoints.
 - Admin endpoints under `/api/v1/admin/` provide analytics and system overview.
 
+## Pagination
+
+- The API uses a shared `StandardResultsSetPagination` (PageNumber pagination) as the default for list endpoints. Query parameters supported: `page`, `page_size`.
+- Default `page_size`: 20. Maximum `page_size`: 100.
+- Endpoints that return large lists (staff queue, patient history, notifications) are paginated by default. Individual views may opt out explicitly.
+
 ---
 
 ## WebSockets / Real-time
 
 - ASGI Channels are used. WebSocket endpoint: `/ws/triage/events/?token=<JWT_ACCESS_TOKEN>`.
-- Use the token query param to authenticate. Only staff roles should open staff channels.
+- Authentication is supported via either:
+  - token query param (`?token=<JWT_ACCESS_TOKEN>`), or
+  - `Authorization: Bearer <JWT_ACCESS_TOKEN>` header.
+- Only authorized roles should open staff-facing channels.
 - Server broadcasts events for `patient_created`, `priority_update`, `critical_alert`, and `status_changed`.
+
+---
+
+## Triage AI Endpoint Behavior
+
+Endpoint: `POST /api/v1/triage/ai/`
+
+Demographic resolution order:
+
+1. Explicit request values (`age`, `gender`, `blood_type`)
+2. AI-extracted demographics from `symptoms`
+3. Authenticated patient profile fallback
+
+Normalization:
+
+- `age` is normalized to a valid range.
+- `gender` is normalized to canonical values.
+- `blood_type` is normalized to canonical ABO/Rh format where possible.
+
+Conflict handling:
+
+- If no explicit demographic values are provided and extracted values conflict with profile values, the API can return `409 demographic_conflict` and request clarification.
+
+---
+
+## PDF Extract Endpoint Behavior
+
+Endpoint: `POST /api/v1/triage/pdf-extract/` (multipart/form-data)
+
+- `file` is required and must be a PDF.
+- `symptoms` (or `description`) is required: clients must include a short, user-entered description of the patient's current feeling, symptom, or pain along with the PDF. If `symptoms` is omitted the endpoint will return a `400` with `"Missing symptoms prompt."` and instructions to include the prompt.
+- When `symptoms` is provided the server validates it for medical relevance before processing the PDF. If the prompt is relevant, the service compares prompt data with extracted PDF demographics and will return `409 demographic_conflict` when there is a disagreement requiring clarification.
+
+Rationale: the service now requires an explicit user complaint to compare against PDF content and to avoid ambiguous file-only submissions. File-only uploads are no longer processed silently.
+
+Demographic fields (`age`, `gender`, `blood_type`) may still be supplied and are used when present.
 
 ---
 

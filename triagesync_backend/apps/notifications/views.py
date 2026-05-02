@@ -4,12 +4,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from triagesync_backend.apps.notifications.models import Notification
 from triagesync_backend.apps.notifications.serializers import NotificationSerializer
+from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import success_response
 from django.utils import timezone
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         queryset = Notification.objects.filter(user=self.request.user)

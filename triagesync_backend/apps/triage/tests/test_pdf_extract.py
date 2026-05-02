@@ -8,6 +8,14 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 
+
+@pytest.fixture(autouse=True)
+def stub_demographic_extractor(monkeypatch):
+    monkeypatch.setattr(
+        "triagesync_backend.apps.triage.services.demographic_extractor.extract_demographics_from_text",
+        lambda text: {"age": None, "gender": None, "blood_type": None, "confidence": "low"},
+    )
+
 @pytest.mark.django_db
 def test_pdf_extract_irrelevant_pdf():
     client = APIClient()
@@ -16,8 +24,8 @@ def test_pdf_extract_irrelevant_pdf():
     pdf_file = make_pdf_with_text("This document is about gardening and has no medical content.")
     resp = client.post(url, {"file": pdf_file}, format="multipart")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.data["error"] == "PDF not relevant."
-    assert "does not contain relevant medical information" in resp.data["message"].lower()
+    assert resp.data["error"] == "Missing symptoms prompt."
+    assert "current feeling" in resp.data["message"].lower()
 
 def make_pdf_with_text(text: str) -> io.BytesIO:
     from reportlab.pdfgen import canvas
@@ -52,7 +60,7 @@ def test_pdf_extract_success(monkeypatch):
     )
     url = reverse("triage-pdf-extract")
     pdf_file = make_pdf_with_text("45-year-old, chest pain")
-    resp = client.post(url, {"file": pdf_file}, format="multipart")
+    resp = client.post(url, {"file": pdf_file, "symptoms": "chest pain"}, format="multipart")
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["priority_level"] == 2
     assert resp.data["category"] == "Cardiac"

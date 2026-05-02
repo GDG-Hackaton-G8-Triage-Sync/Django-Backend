@@ -60,3 +60,25 @@ def build_status_changed_event(patient_id: int, status: str) -> dict:
             "new_status": status,
         },
     )
+
+
+def build_wait_time_update_event(patient_id: int, wait_time_minutes: float, sla_status: str) -> dict:
+    """
+    Build wait time update event payload.
+    
+    Args:
+        patient_id: PatientSubmission ID
+        wait_time_minutes: Current wait time in minutes
+        sla_status: One of 'normal', 'warning', 'critical'
+    
+    Returns:
+        Event payload with event_type='WAIT_TIME_UPDATE'
+    """
+    return _base_event(
+        "WAIT_TIME_UPDATE",
+        {
+            "submission_id": patient_id,
+            "wait_time_minutes": wait_time_minutes,
+            "sla_status": sla_status,
+        },
+    )

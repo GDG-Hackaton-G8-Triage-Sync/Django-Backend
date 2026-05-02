@@ -171,6 +171,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_PAGINATION_CLASS": "triagesync_backend.apps.core.pagination.StandardResultsSetPagination",
+    "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "triagesync_backend.apps.core.exceptions.custom_exception_handler",
 }
 
@@ -201,6 +203,19 @@ else:
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
+
+# --- Celery Configuration ---
+# Celery broker URL (uses Redis)
+CELERY_BROKER_URL = REDIS_URL or 'redis://localhost:6379/0'
+# Celery result backend (uses Redis)
+CELERY_RESULT_BACKEND = REDIS_URL or 'redis://localhost:6379/0'
+# Celery task serialization
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_RESULT_SERIALIZER = 'json'
+# Celery timezone
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
 
 CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")

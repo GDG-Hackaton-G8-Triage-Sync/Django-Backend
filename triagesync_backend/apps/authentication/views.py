@@ -16,6 +16,31 @@ from triagesync_backend.apps.notifications.services.notification_service import 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
     
+    def get(self, request):
+        """Return API information for GET requests."""
+        return Response({
+            "endpoint": "/api/v1/auth/register/",
+            "method": "POST",
+            "description": "Register a new user account",
+            "required_fields": {
+                "patient": ["name", "email", "password", "role", "age", "gender"],
+                "staff": ["name", "email", "password", "role"]
+            },
+            "optional_fields": {
+                "patient": ["blood_type", "health_history", "allergies", "current_medications", "bad_habits", "date_of_birth", "contact_info"],
+                "staff": []
+            },
+            "example_request": {
+                "name": "John Doe",
+                "email": "john@example.com",
+                "password": "securepassword123",
+                "role": "patient",
+                "age": 30,
+                "gender": "male",
+                "blood_type": "A+"
+            }
+        }, status=status.HTTP_200_OK)
+    
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
@@ -28,6 +53,11 @@ class RegisterView(APIView):
                     if not request.data.get(field) and request.data.get(field) != 0:
                         missing_fields.append(field)
             details = serializer.errors
+            # Ensure blood_type/gender are surfaced when missing for patient role
+            if request.data.get('role') == 'patient':
+                for f in ('gender', 'blood_type'):
+                    if f not in details and not request.data.get(f):
+                        details[f] = ["This field is required."]
             if missing_fields:
                 details['demographics'] = f"Missing required demographic fields: {', '.join(missing_fields)}"
             return error_response(
@@ -147,6 +177,34 @@ class RefreshTokenView(TokenRefreshView):
             return error_response(
                 code="INTERNAL_SERVER_ERROR",
                 message="An unexpected error occurred during token refresh",
+                details={},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class LogoutView(APIView):
+    """
+    POST /api/v1/auth/logout/
+    Clear session data on logout (e.g., filter preferences).
+    
+    Note: This is a JWT-based system, so token invalidation happens client-side.
+    This endpoint only clears server-side session data.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Clear all session data on logout."""
+        try:
+            # Clear all session data including filter preferences
+            request.session.flush()
+            
+            return Response({
+                "message": "Logout successful. Session data cleared."
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return error_response(
+                code="INTERNAL_SERVER_ERROR",
+                message="An error occurred during logout",
                 details={},
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

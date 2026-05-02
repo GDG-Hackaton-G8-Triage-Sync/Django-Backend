@@ -364,11 +364,17 @@ def _parse_ai_json(text):
     return None, "no JSON object found"
 
 
-def get_triage_recommendation(symptoms, age=None, gender=None, blood_type=None, model_name=None):
+def get_triage_recommendation(symptoms, age=None, gender=None, blood_type=None, model_name=None, patient_context=None):
     age = normalize_age(age)
     gender = normalize_gender(gender)
     blood_type = normalize_blood_type(blood_type)
-    prompt = build_triage_prompt(symptoms, age=age, gender=gender, blood_type=blood_type)
+    prompt = build_triage_prompt(
+        symptoms,
+        age=age,
+        gender=gender,
+        blood_type=blood_type,
+        patient_context=patient_context,
+    )
     response_text = call_gemini_api(prompt, model_name=model_name, user_description=symptoms)
     logger.debug("Raw AI response: %r", response_text)
 

@@ -1,11 +1,17 @@
 ﻿from rest_framework.views import exception_handler
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.exceptions import (
+    AuthenticationFailed, 
+    PermissionDenied, 
+    MethodNotAllowed,
+    NotFound,
+    ValidationError
+)
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 
 def custom_exception_handler(exc, context):
     """
-    Custom exception handler for DRF that maps authentication exceptions
+    Custom exception handler for DRF that maps exceptions
     to standardized error codes.
     
     Maps:
@@ -13,6 +19,9 @@ def custom_exception_handler(exc, context):
     - InvalidToken -> INVALID_TOKEN
     - TokenError (expired) -> TOKEN_EXPIRED
     - PermissionDenied -> PERMISSION_DENIED
+    - MethodNotAllowed -> METHOD_NOT_ALLOWED
+    - NotFound -> NOT_FOUND
+    - ValidationError -> VALIDATION_ERROR
     
     Requirements: 7.3, 7.4, 7.5
     """
@@ -37,6 +46,18 @@ def custom_exception_handler(exc, context):
                 error_code = "AUTHENTICATION_REQUIRED"
         elif isinstance(exc, PermissionDenied):
             error_code = "PERMISSION_DENIED"
+        elif isinstance(exc, MethodNotAllowed):
+            error_code = "METHOD_NOT_ALLOWED"
+            # Provide helpful message about allowed methods
+            allowed_methods = getattr(exc, 'detail', {}).get('allowed_methods', [])
+            if allowed_methods:
+                error_message = f"Method '{context['request'].method}' not allowed. Allowed methods: {', '.join(allowed_methods)}"
+            else:
+                error_message = f"Method '{context['request'].method}' not allowed."
+        elif isinstance(exc, NotFound):
+            error_code = "NOT_FOUND"
+        elif isinstance(exc, ValidationError):
+            error_code = "VALIDATION_ERROR"
         
         # Format response consistently
         response.data = {

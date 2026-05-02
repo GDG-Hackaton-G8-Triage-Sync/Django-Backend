@@ -11,6 +11,7 @@ from .event_service import (
     build_patient_created_event,
     build_priority_update_event,
     build_status_changed_event,
+    build_wait_time_update_event,
 )
 
 TRIAGE_GROUP = "triage_events"
@@ -51,3 +52,23 @@ def broadcast_status_changed(patient_id: int, status: str) -> None:
     """Call this when staff changes a patient's status."""
     payload = build_status_changed_event(patient_id, status)
     _send(payload)
+
+
+def broadcast_wait_time_update(patient_id: int, wait_time_minutes: float, sla_status: str) -> None:
+    """
+    Broadcast wait time update for a patient submission.
+    
+    Args:
+        patient_id: PatientSubmission ID
+        wait_time_minutes: Current wait time in minutes
+        sla_status: One of 'normal', 'warning', 'critical'
+    """
+    try:
+        payload = build_wait_time_update_event(patient_id, wait_time_minutes, sla_status)
+        _send(payload)
+    except Exception as e:
+        # Log error but don't raise - allow system to continue without real-time updates
+        import logging
+        logger = logging.getLogger("realtime.broadcast")
+        logger.error(f"Failed to broadcast wait time update for patient {patient_id}: {e}")
+

@@ -8,7 +8,7 @@ from triagesync_backend.apps.core.validators import validate_status_transition
 logger = logging.getLogger("dashboard.service")
 
 
-def get_patient_queue(priority=None, status=None):
+def get_patient_queue(priority=None, status=None, category=None):
     """
     Fetch patients with optional filtering and intelligent ordering.
     
@@ -30,6 +30,14 @@ def get_patient_queue(priority=None, status=None):
     - Fair ordering within same priority level
     
     Optimized with select_related to prevent N+1 queries
+    
+    Args:
+        priority: Optional priority filter (1-5)
+        status: Optional status filter (waiting, in_progress, completed)
+        category: Optional category filter (Cardiac, Respiratory, Trauma, Neurological, General)
+    
+    Returns:
+        QuerySet of PatientSubmission ordered by priority, urgency_score, created_at
     """
     queryset = PatientSubmission.objects.select_related('patient__user').all()
 
@@ -39,6 +47,9 @@ def get_patient_queue(priority=None, status=None):
 
     if status:
         queryset = queryset.filter(status=status)
+
+    if category:
+        queryset = queryset.filter(category=category)
 
     # Multi-level sorting:
     # 1. Priority ASC (1 comes before 5)
@@ -87,7 +98,11 @@ def get_admin_overview():
     """
     Aggregated system stats for Admin Dashboard.
     Aligned with frontend expectations (Enterprise Admin Portal).
+    
+    Requirements: 6.4, 6.5
     """
+    from .wait_time_service import get_wait_time_analytics
+    
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -105,6 +120,9 @@ def get_admin_overview():
         created_at__lt=sla_threshold
     ).count()
 
+    # Get wait time analytics from wait_time_service
+    wait_time_analytics = get_wait_time_analytics()
+
     return {
         "total_patients": PatientSubmission.objects.count(),
         "waiting_patients": PatientSubmission.objects.filter(status="waiting").count(),
@@ -112,7 +130,9 @@ def get_admin_overview():
         "completed_today": PatientSubmission.objects.filter(status="completed", processed_at__gte=today_start).count(),
         "critical_cases": PatientSubmission.objects.filter(priority=1).count(),
         "sla_breaches": sla_breaches,
-        "average_wait_time_minutes": round(avg_wait, 1)
+        "average_wait_time_minutes": round(avg_wait, 1),
+        "sla_warning_count": wait_time_analytics['sla_warning_count'],  # NEW: Cases at 25-30 minutes
+        "max_wait_time_minutes": wait_time_analytics['max_wait_active'],  # NEW: Longest current wait
     }
 
 
@@ -120,11 +140,18 @@ def get_admin_analytics():
     """
     Detailed analytics for Admin Dashboard (Command Center).
     Provides time-series data for Wait Time Trends and SLA Breach Velocity.
+    
+    Requirements: 8.1, 8.2, 8.3, 13.1, 13.2, 13.3
     """
+    from .wait_time_service import get_wait_time_analytics, get_category_wait_time_analytics
+    
     now = timezone.now()
     
-    # 1. Wait Time Trends & SLA Breach Velocity (Last 12 Hours)
-    wait_time_trends = []
+    # 1. Get wait time analytics from wait_time_service (Requirements 8.1, 8.2, 8.3)
+    wait_time_analytics = get_wait_time_analytics()
+    wait_time_trends = wait_time_analytics['wait_time_trends']  # 12 hourly values
+    
+    # 2. Calculate SLA Breach Velocity (Last 12 Hours)
     sla_breach_velocity = []
     
     for i in range(11, -1, -1):
@@ -137,27 +164,17 @@ def get_admin_analytics():
             created_at__lt=hour_end
         )
         
-        # Avg Wait time calculation
-        if hour_submissions.exists():
-            avg_h_wait = hour_submissions.aggregate(Avg("urgency_score"))["urgency_score__avg"] or 0
-            # Map urgency to a representative 'wait time' trend if real wait data is sparse
-            wait_time_trends.append(round(avg_h_wait / 2, 1)) 
-            
-            # Count breaches (exceeding 30m target)
-            breaches = 0
-            for s in hour_submissions:
-                target_met = False
-                if s.processed_at:
-                    if (s.processed_at - s.created_at).total_seconds() / 60 > 30:
-                        breaches += 1
-                elif (now - s.created_at).total_seconds() / 60 > 30:
+        # Count breaches (exceeding 30m target)
+        breaches = 0
+        for s in hour_submissions:
+            if s.processed_at:
+                if (s.processed_at - s.created_at).total_seconds() / 60 > 30:
                     breaches += 1
-            sla_breach_velocity.append(breaches)
-        else:
-            wait_time_trends.append(0)
-            sla_breach_velocity.append(0)
+            elif (now - s.created_at).total_seconds() / 60 > 30:
+                breaches += 1
+        sla_breach_velocity.append(breaches)
 
-    # 2. Common Conditions Mapping
+    # 3. Common Conditions Mapping
     conditions_query = (
         PatientSubmission.objects.values("category")
         .annotate(count=Count("category"))
@@ -168,7 +185,25 @@ def get_admin_analytics():
         for item in conditions_query
     }
 
-    # 3. Peak usage time
+    # 4. Category Distribution (Requirements 3.1, 3.2, 3.3, 3.4)
+    # Calculate count of PatientSubmissions for each category
+    # Return ordered by case count descending
+    # Exclude categories with zero cases
+    category_distribution_query = (
+        PatientSubmission.objects.values("category")
+        .annotate(count=Count("id"))
+        .filter(count__gt=0)  # Exclude categories with zero cases
+        .order_by("-count")  # Order by case count descending
+    )
+    category_distribution = {
+        item["category"] or "General": item["count"]
+        for item in category_distribution_query
+    }
+
+    # 5. Get category wait time analytics (Requirements 13.1, 13.2, 13.3)
+    category_wait_times = get_category_wait_time_analytics()
+
+    # 6. Peak usage time
     from django.db.models.functions import ExtractHour
     peak_hour_query = (
         PatientSubmission.objects.annotate(hour=ExtractHour("created_at"))
@@ -185,8 +220,10 @@ def get_admin_analytics():
         "avg_urgency_score": round(avg_urgency, 1),
         "peak_usage_time": peak_usage_time,
         "common_conditions": common_conditions,
-        "wait_time_trends": wait_time_trends,
+        "category_distribution": category_distribution,  # Category distribution
+        "wait_time_trends": wait_time_trends,  # NEW: 12 hourly wait time values from wait_time_service
         "sla_breach_velocity": sla_breach_velocity,
+        "category_wait_times": category_wait_times,  # NEW: Performance by category
         "peak_hour": peak_usage_time,
     }
 

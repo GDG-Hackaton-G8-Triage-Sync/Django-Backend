@@ -19,7 +19,12 @@ class StaffPatientQueueView(APIView):
     """
     GET /api/v1/staff/patients/
     Staff patient queue with pagination
-    Query params: priority, status, page, page_size (default 20, max 100)
+    Query params: priority, status, category, page, page_size (default 20, max 100)
+    
+    Session-based category filter persistence:
+    - If category parameter is provided, store it in session
+    - If category parameter is empty string, clear session preference
+    - If no category parameter, use stored session preference
     """
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
     pagination_class = StandardResultsSetPagination
@@ -27,8 +32,26 @@ class StaffPatientQueueView(APIView):
     def get(self, request):
         priority = request.query_params.get("priority")
         status_param = request.query_params.get("status")
+        
+        # Handle category filter with session persistence
+        category_param = request.query_params.get("category")
+        
+        if category_param is not None:
+            # Category parameter is explicitly provided
+            if category_param == "":
+                # Empty string means clear the filter
+                if "category_filter" in request.session:
+                    del request.session["category_filter"]
+                category = None
+            else:
+                # Store the filter preference in session
+                request.session["category_filter"] = category_param
+                category = category_param
+        else:
+            # No category parameter - use stored preference if available
+            category = request.session.get("category_filter", None)
 
-        patients = get_patient_queue(priority, status_param)
+        patients = get_patient_queue(priority, status_param, category)
         
         # Apply pagination
         paginator = self.pagination_class()

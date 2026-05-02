@@ -86,6 +86,9 @@ class PatientSubmission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
+    # METADATA (for tracking SLA alerts and other system state)
+    metadata = models.JSONField(default=dict, blank=True)
+
     def __str__(self) -> str:
         return f"Submission {self.id} by {self.patient.name}"
 

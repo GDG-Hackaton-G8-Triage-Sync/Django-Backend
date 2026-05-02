@@ -54,16 +54,24 @@ class JWTAuthMiddleware:
         Returns:
             Token string if present and non-empty, None otherwise
         """
+        # First, try query string param `token`
         query_string = scope.get('query_string', b'').decode('utf-8')
         query_params = parse_qs(query_string)
-        
-        # parse_qs returns lists, get first value
         token_list = query_params.get('token', [])
-        
-        if not token_list or not token_list[0]:
-            return None
-        
-        return token_list[0]
+        if token_list and token_list[0]:
+            return token_list[0]
+
+        # Fallback: try the Authorization header (Bearer <token>) for clients
+        # that prefer headers over query params. ASGI scope stores headers
+        # as a list of [name, value] byte pairs.
+        headers = dict((k.decode('utf-8').lower(), v.decode('utf-8')) for k, v in scope.get('headers', []))
+        auth = headers.get('authorization') or headers.get('Authorization')
+        if auth:
+            parts = auth.split()
+            if len(parts) == 2 and parts[0].lower() == 'bearer':
+                return parts[1]
+
+        return None
     
     async def _authenticate_user(self, token: str) -> Optional[User]:
         """

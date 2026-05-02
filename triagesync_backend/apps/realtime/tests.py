@@ -15,12 +15,14 @@ from triagesync_backend.apps.realtime.services.broadcast_service import (
     broadcast_patient_created,
     broadcast_priority_update,
     broadcast_status_changed,
+    broadcast_wait_time_update,
 )
 from triagesync_backend.apps.realtime.services.event_service import (
     build_critical_alert_event,
     build_patient_created_event,
     build_priority_update_event,
     build_status_changed_event,
+    build_wait_time_update_event,
 )
 
 # ---------------------------------------------------------------------------
@@ -65,6 +67,30 @@ class EventServiceTests(TestCase):
         ]
         for event in events:
             self.assertIn("timestamp", event)
+
+    def test_wait_time_update_event_structure(self):
+        """Test the wait time update event builder."""
+        event = build_wait_time_update_event(
+            patient_id=10, 
+            wait_time_minutes=25.5, 
+            sla_status="warning"
+        )
+        self.assertEqual(event["type"], "WAIT_TIME_UPDATE")
+        self.assertEqual(event["data"]["submission_id"], 10)
+        self.assertEqual(event["data"]["wait_time_minutes"], 25.5)
+        self.assertEqual(event["data"]["sla_status"], "warning")
+        self.assertIn("timestamp", event)
+
+    def test_wait_time_update_event_with_critical_status(self):
+        """Test wait time update event with critical SLA status."""
+        event = build_wait_time_update_event(
+            patient_id=20, 
+            wait_time_minutes=35.0, 
+            sla_status="critical"
+        )
+        self.assertEqual(event["type"], "WAIT_TIME_UPDATE")
+        self.assertEqual(event["data"]["sla_status"], "critical")
+        self.assertEqual(event["data"]["wait_time_minutes"], 35.0)
 
 
 # ---------------------------------------------------------------------------
@@ -220,3 +246,65 @@ class TriageBroadcastIntegrationTests(TestCase):
             # chest pain → high → score 60 → priority 2 (URGENT) based on M6 logic
             self.assertIn(call_kwargs.kwargs["priority"], [1, 2])
             self.assertIn(call_kwargs.kwargs["urgency_score"], range(0, 101))
+
+
+# ---------------------------------------------------------------------------
+# Wait time broadcast tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+class WaitTimeBroadcastTests(TestCase):
+    """Tests for wait time update broadcasting."""
+
+    async def test_wait_time_update_broadcast(self):
+        """Test that wait time updates are broadcast correctly."""
+        communicator = WebsocketCommunicator(
+            TriageEventsConsumer.as_asgi(),
+            "/ws/triage/events/"
+        )
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        # Broadcast a wait time update
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            "triage_events",
+            {
+                "type": "triage_event",
+                "payload": build_wait_time_update_event(
+                    patient_id=15,
+                    wait_time_minutes=28.5,
+                    sla_status="warning"
+                )
+            },
+        )
+
+        response = await communicator.receive_json_from()
+        self.assertEqual(response["type"], "WAIT_TIME_UPDATE")
+        self.assertEqual(response["data"]["submission_id"], 15)
+        self.assertEqual(response["data"]["wait_time_minutes"], 28.5)
+        self.assertEqual(response["data"]["sla_status"], "warning")
+
+        await communicator.disconnect()
+
+    def test_broadcast_wait_time_update_error_handling(self):
+        """Test that broadcast errors are handled gracefully."""
+        from unittest.mock import patch
+        
+        # Mock _send to raise an exception
+        with patch("triagesync_backend.apps.realtime.services.broadcast_service._send", 
+                   side_effect=Exception("Channel layer unavailable")):
+            # This should not raise an exception
+            try:
+                broadcast_wait_time_update(
+                    patient_id=99,
+                    wait_time_minutes=30.0,
+                    sla_status="critical"
+                )
+                # If we get here, the error was handled gracefully
+                success = True
+            except Exception:
+                success = False
+            
+            self.assertTrue(success, "broadcast_wait_time_update should handle errors gracefully")
