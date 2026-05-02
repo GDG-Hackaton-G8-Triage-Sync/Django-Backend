@@ -1,0 +1,499 @@
+{
+  "name": "PDF Triage Endpoints",
+  "description": "Tests for PDF-based triage with symptoms requirement (Breaking Change: symptoms field now required)",
+  "item": [
+    {
+      "name": "POST /api/v1/triage/pdf/ - Valid PDF with Symptoms and Demographics",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has required triage fields\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('priority_level');",
+              "    pm.expect(jsonData).to.have.property('urgency_score');",
+              "    pm.expect(jsonData).to.have.property('condition');",
+              "    pm.expect(jsonData).to.have.property('category');",
+              "    pm.expect(jsonData).to.have.property('is_critical');",
+              "    pm.expect(jsonData).to.have.property('explanation');",
+              "    pm.expect(jsonData).to.have.property('recommended_action');",
+              "    pm.expect(jsonData).to.have.property('reason');",
+              "});",
+              "",
+              "pm.test(\"Priority level is valid (1-5)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.priority_level).to.be.within(1, 5);",
+              "});",
+              "",
+              "pm.test(\"Urgency score is valid (0-100)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.urgency_score).to.be.within(0, 100);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf",
+              "description": "PDF file with medical information"
+            },
+            {
+              "key": "symptoms",
+              "value": "chest pain radiating to left arm, sweating, difficulty breathing",
+              "type": "text",
+              "description": "PRIMARY symptoms description (REQUIRED)"
+            },
+            {
+              "key": "age",
+              "value": "45",
+              "type": "text"
+            },
+            {
+              "key": "gender",
+              "value": "male",
+              "type": "text"
+            },
+            {
+              "key": "blood_type",
+              "value": "A+",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test PDF triage with symptoms (primary) and PDF content (supplementary)"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Critical Case with PDF",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Critical symptoms should have high priority\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.priority_level).to.be.within(1, 2);",
+              "    pm.expect(jsonData.urgency_score).to.be.above(80);",
+              "    pm.expect(jsonData.is_critical).to.be.true;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf"
+            },
+            {
+              "key": "symptoms",
+              "value": "severe chest pain, not breathing properly, unconscious episodes",
+              "type": "text"
+            },
+            {
+              "key": "age",
+              "value": "65",
+              "type": "text"
+            },
+            {
+              "key": "gender",
+              "value": "female",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test critical case with PDF - should return high priority"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Missing Symptoms (400) BREAKING CHANGE",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error indicates missing symptoms\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.error).to.equal('Missing symptoms prompt.');",
+              "});",
+              "",
+              "pm.test(\"Response includes helpful message\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "    pm.expect(jsonData).to.have.property('instructions');",
+              "    pm.expect(jsonData.message).to.include('symptoms description');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf",
+              "description": "PDF without symptoms - should fail"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "BREAKING CHANGE: PDF upload without symptoms now returns 400. Previously this was allowed."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Empty Symptoms (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error indicates missing symptoms\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.error).to.equal('Missing symptoms prompt.');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf"
+            },
+            {
+              "key": "symptoms",
+              "value": "   ",
+              "type": "text",
+              "description": "Whitespace-only symptoms should be rejected"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test that whitespace-only symptoms are rejected"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Irrelevant Symptoms (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error indicates symptoms not relevant\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.error).to.equal('Symptoms not relevant.');",
+              "});",
+              "",
+              "pm.test(\"Message explains relevance requirement\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.message).to.include('medical triage');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf"
+            },
+            {
+              "key": "symptoms",
+              "value": "I like pizza and ice cream",
+              "type": "text",
+              "description": "Non-medical symptoms should be rejected"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test that non-medical symptoms are rejected by relevance check"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Missing PDF File (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error indicates missing PDF\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "symptoms",
+              "value": "chest pain and shortness of breath",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test that PDF file is still required"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Invalid PDF Format (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error indicates invalid PDF format\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.error).to.include('PDF');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_image.jpg",
+              "description": "Non-PDF file should be rejected"
+            },
+            {
+              "key": "symptoms",
+              "value": "chest pain and shortness of breath",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test that non-PDF files are rejected"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - With Demographics Warnings",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response includes warnings for missing demographics\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('warning');",
+              "    pm.expect(jsonData.warning).to.be.an('array');",
+              "    pm.expect(jsonData.warning).to.include('age_missing');",
+              "    pm.expect(jsonData.warning).to.include('gender_missing');",
+              "    pm.expect(jsonData.warning).to.include('blood_type_missing');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf"
+            },
+            {
+              "key": "symptoms",
+              "value": "fever and cough",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test that missing demographics generate warnings (not errors)"
+      },
+      "response": []
+    },
+    {
+      "name": "POST /api/v1/triage/pdf/ - Minor Symptoms with PDF",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Minor symptoms should have low priority\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.priority_level).to.be.within(4, 5);",
+              "    pm.expect(jsonData.is_critical).to.be.false;",
+              "    pm.expect(jsonData.urgency_score).to.be.below(40);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pdf_file",
+              "type": "file",
+              "src": "test_medical_report.pdf"
+            },
+            {
+              "key": "symptoms",
+              "value": "mild headache and runny nose",
+              "type": "text"
+            },
+            {
+              "key": "age",
+              "value": "25",
+              "type": "text"
+            },
+            {
+              "key": "gender",
+              "value": "other",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/triage/pdf/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "triage", "pdf", ""]
+        },
+        "description": "Test minor symptoms with PDF - should return low priority"
+      },
+      "response": []
+    }
+  ]
+}

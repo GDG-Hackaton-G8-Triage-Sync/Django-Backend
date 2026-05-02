@@ -51,6 +51,8 @@ def is_relevant(text):
 class TriageAIView(APIView):
     permission_classes = [AllowAny]
     def post(self, request):
+        from .services.demographic_extractor import extract_demographics_from_text, detect_conflicts
+        
         # Use sanitized data and warnings from middleware
         warning = getattr(request, "_triage_warning", None)
         error = getattr(request, "_triage_error", None)
@@ -59,17 +61,49 @@ class TriageAIView(APIView):
         age = data.get("age")
         gender = data.get("gender")
         blood_type = data.get("blood_type")
-        # If not provided, get from patient profile (if authenticated)
-        if not age or not gender or not blood_type:
-            user = request.user if request.user and request.user.is_authenticated else None
-            if user and hasattr(user, "patient_profile"):
-                patient = user.patient_profile
-                if not age and getattr(patient, "age", None) is not None:
-                    age = patient.age
-                if not gender and getattr(patient, "gender", None):
-                    gender = patient.gender
-                if not blood_type and getattr(patient, "blood_type", None):
-                    blood_type = patient.blood_type
+        
+        # Step 1: Extract demographics from symptoms text using AI
+        ai_extracted = extract_demographics_from_text(symptoms) if symptoms else {
+            'age': None, 'gender': None, 'blood_type': None, 'confidence': 'low'
+        }
+        
+        # Step 2: Get profile data if user is authenticated
+        profile_data = {'age': None, 'gender': None, 'blood_type': None}
+        user = request.user if request.user and request.user.is_authenticated else None
+        if user and hasattr(user, "patient_profile"):
+            patient = user.patient_profile
+            profile_data['age'] = getattr(patient, "age", None)
+            profile_data['gender'] = getattr(patient, "gender", None)
+            profile_data['blood_type'] = getattr(patient, "blood_type", None)
+        
+        # Step 3: Only check for conflicts if NO explicit values provided
+        # If user explicitly provides values, those take precedence (no conflict check)
+        if not age and not gender and not blood_type:
+            # Detect conflicts between AI-extracted and profile data
+            conflict_info = detect_conflicts(ai_extracted, profile_data)
+            
+            # Step 4: Handle conflicts - ask user for clarification
+            if conflict_info['has_conflict']:
+                return Response({
+                    "error": "demographic_conflict",
+                    "message": "We found conflicting demographic information. Please clarify which values are correct.",
+                    "conflicts": conflict_info['conflicts'],
+                    "ai_extracted": conflict_info['ai_values'],
+                    "profile_data": conflict_info['profile_values'],
+                    "instructions": "Please provide the correct values in your next request using the age, gender, or blood_type fields."
+                }, status=status.HTTP_409_CONFLICT)
+        
+        # Step 5: Determine final values (priority: explicit request > AI extraction > profile)
+        # If explicitly provided in request, use that (highest priority)
+        # Otherwise, use AI-extracted if available
+        # Otherwise, fall back to profile data
+        if not age:
+            age = ai_extracted.get('age') or profile_data.get('age')
+        if not gender:
+            gender = ai_extracted.get('gender') or profile_data.get('gender')
+        if not blood_type:
+            blood_type = ai_extracted.get('blood_type') or profile_data.get('blood_type')
+        
         if error:
             return Response({
                 "error": "Missing symptoms.",
@@ -148,6 +182,18 @@ class TriagePDFExtractView(APIView):
     def post(self, request):
         import logging
         logger = logging.getLogger("triage.pdf")
+        
+        # STEP 1: Validate that symptoms prompt is provided
+        symptoms_prompt = request.data.get("symptoms", "").strip()
+        if not symptoms_prompt:
+            logger.warning("PDF upload: missing symptoms prompt.")
+            return Response({
+                "error": "Missing symptoms prompt.",
+                "message": "Please provide a symptoms description along with the PDF. The PDF content will be used as supplementary information.",
+                "instructions": "Include a 'symptoms' field in your request with at least one symptom."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # STEP 2: Validate PDF file
         serializer = PDFUploadSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning("PDF upload: invalid serializer input: %s", serializer.errors)
@@ -167,10 +213,11 @@ class TriagePDFExtractView(APIView):
                 "error": "Only PDF files are allowed.",
                 "message": "Please upload a file with a .pdf extension."
             }, status=status.HTTP_400_BAD_REQUEST)
-        # Try to read PDF
+        
+        # STEP 3: Extract text from PDF
         try:
             reader = PdfReader(pdf_file)
-            text = "\n".join(page.extract_text() or '' for page in reader.pages)
+            pdf_text = "\n".join(page.extract_text() or '' for page in reader.pages)
         except Exception as e:
             logger.warning("PDF extraction failed: %s", str(e))
             return Response({
@@ -180,23 +227,25 @@ class TriagePDFExtractView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
         # Truncate text if extremely long (e.g., 10,000 chars)
         max_text_length = 10000
-        if len(text) > max_text_length:
-            text = text[:max_text_length]
+        if len(pdf_text) > max_text_length:
+            pdf_text = pdf_text[:max_text_length]
         # If no text extracted, return error
-        if not text or not text.strip():
+        if not pdf_text or not pdf_text.strip():
             logger.warning("PDF upload: no extractable text found.")
             return Response({
                 "error": "No text extracted.",
                 "message": "No extractable text found in the PDF. Please upload a PDF with selectable text."
             }, status=status.HTTP_400_BAD_REQUEST)
-        # Reject if text is not relevant
-        if not is_relevant(text):
-            logger.warning("PDF upload: irrelevant content rejected.")
+        
+        # STEP 4: Validate symptoms prompt is relevant
+        if not is_relevant(symptoms_prompt):
+            logger.warning("PDF upload: symptoms prompt not relevant.")
             return Response({
-                "error": "PDF not relevant.",
-                "message": "The uploaded PDF does not contain relevant medical information for triage. Please upload a document related to patient symptoms or medical conditions."
+                "error": "Symptoms not relevant.",
+                "message": "The symptoms description does not appear to be related to a medical triage situation. Please provide relevant medical symptoms."
             }, status=status.HTTP_400_BAD_REQUEST)
-        # Build prompt and call Gemini -- carry demographics from the multipart form if present
+        
+        # STEP 5: Get demographics (from request or profile)
         pdf_age = normalize_age(request.data.get("age"))
         pdf_gender = normalize_gender(request.data.get("gender"))
         pdf_blood_type = request.data.get("blood_type")
@@ -210,7 +259,29 @@ class TriagePDFExtractView(APIView):
                 pdf_gender = patient.gender
             if not pdf_blood_type and getattr(patient, "blood_type", None):
                 pdf_blood_type = patient.blood_type
-        prompt = build_pdf_triage_prompt(text, age=pdf_age, gender=pdf_gender, blood_type=pdf_blood_type)
+        
+        # STEP 6: Build warnings list (middleware doesn't run on multipart)
+        warnings = []
+        if pdf_age in (None, ""):
+            warnings.append("age_missing")
+        if pdf_gender in (None, ""):
+            warnings.append("gender_missing")
+        if pdf_blood_type in (None, ""):
+            warnings.append("blood_type_missing")
+        
+        # STEP 7: Combine symptoms prompt with PDF content
+        # The symptoms prompt is primary, PDF content is supplementary
+        combined_text = f"""PRIMARY SYMPTOMS:
+{symptoms_prompt}
+
+SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
+{pdf_text}"""
+        
+        logger.info("PDF triage: combining user symptoms with PDF content (symptoms: %d chars, PDF: %d chars)", 
+                   len(symptoms_prompt), len(pdf_text))
+        
+        # STEP 8: Build prompt and call AI
+        prompt = build_pdf_triage_prompt(combined_text, age=pdf_age, gender=pdf_gender, blood_type=pdf_blood_type)
         expected_fields = [
             "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
         ]
@@ -243,6 +314,9 @@ class TriagePDFExtractView(APIView):
         if serializer.is_valid():
             response_data = dict(serializer.data)
             response_data["source"] = "ai"
+            # Include warnings in response
+            if warnings:
+                response_data["warning"] = warnings
             # Return flat structure (no envelope)
             return Response(response_data)
 
