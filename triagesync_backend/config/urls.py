@@ -13,6 +13,7 @@ urlpatterns = [
     path("api/v1/patients/", include("triagesync_backend.apps.patients.urls")),
     path("api/v1/dashboard/", include("triagesync_backend.apps.dashboard.urls")),
     path("api/v1/triage/", include("triagesync_backend.apps.triage.urls")),
+    path("api/v1/staff/", include("triagesync_backend.apps.patients.staff_urls")),  # Staff clinical workflow routes
     path("api/v1/admin/", include("triagesync_backend.apps.api_admin.urls")),
     path("api/v1/notifications/", include("triagesync_backend.apps.notifications.urls")),
     path("", health_check),

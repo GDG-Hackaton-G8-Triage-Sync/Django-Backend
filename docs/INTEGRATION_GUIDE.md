@@ -43,6 +43,22 @@ The backend now allows **Admins** and **Staff** to view the `PatientSubmissionDe
 
 ---
 
+## 🗺️ Staff Clinical Workflow — URL Reference
+
+The Flutter frontend uses the `/api/v1/staff/` prefix for all clinical workflow actions. These routes are fully supported:
+
+| Action | Method | URL |
+| :----- | :----- | :-- |
+| Get staff notes | `GET` | `/api/v1/staff/patient/{id}/notes/` |
+| Add staff note | `POST` | `/api/v1/staff/patient/{id}/notes/` |
+| Assign staff to case | `PATCH` | `/api/v1/staff/patient/{id}/assign/` |
+| View vitals history | `GET` | `/api/v1/staff/patient/{id}/vitals/history/` |
+| Verify triage case | `PATCH` | `/api/v1/staff/patient/{id}/verify/` |
+
+> **Note**: The same views are also accessible under `/api/v1/triage/{id}/` (e.g. `notes/`, `assign/`, `vitals/`) for backwards compatibility.
+
+---
+
 ## 📡 Real-time Handling
 
 ### WebSocket Connection
