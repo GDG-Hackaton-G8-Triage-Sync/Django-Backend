@@ -38,9 +38,32 @@ class TriageSubmissionSerializer(serializers.Serializer):
     
     
 class PatientSubmissionSerializer(serializers.ModelSerializer):
+    # Patient Demographics (Nested)
+    patient_name = serializers.CharField(source='patient.name', read_only=True)
+    patient_age = serializers.IntegerField(source='patient.age', read_only=True)
+    patient_gender = serializers.CharField(source='patient.gender', read_only=True)
+    patient_blood_type = serializers.CharField(source='patient.blood_type', read_only=True)
+    patient_medical_history = serializers.CharField(source='patient.health_history', read_only=True)
+    patient_allergies = serializers.CharField(source='patient.allergies', read_only=True)
+    patient_medications = serializers.CharField(source='patient.medications', read_only=True)
+    patient_lifestyle_habits = serializers.CharField(source='patient.lifestyle_habits', read_only=True)
+    
+    # Staff Info
+    assigned_staff_name = serializers.CharField(source='assigned_to.username', read_only=True, allow_null=True)
+    verified_by_name = serializers.CharField(source='verified_by_user.username', read_only=True, allow_null=True)
+
     class Meta:
         model = PatientSubmission
-        fields = ['id', 'patient', 'symptoms', 'priority', 'urgency_score', 'condition', 'status', 'photo_name', 'created_at', 'processed_at', 'verified_by_user', 'verified_at']
+        fields = [
+            'id', 'patient', 'patient_name', 'patient_age', 'patient_gender', 
+            'patient_blood_type', 'patient_medical_history', 'patient_allergies', 
+            'patient_medications', 'patient_lifestyle_habits',
+            'symptoms', 'priority', 'urgency_score', 'condition', 'category',
+            'status', 'photo_name', 'is_critical', 'explanation', 'reason', 
+            'recommended_action', 'confidence', 'source',
+            'assigned_to', 'assigned_staff_name',
+            'created_at', 'processed_at', 'verified_by_user', 'verified_by_name', 'verified_at'
+        ]
         read_only_fields = fields
 
 

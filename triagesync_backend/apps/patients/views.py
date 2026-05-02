@@ -131,25 +131,31 @@ class PatientSubmissionDetailView(APIView):
     
     GET /api/v1/patients/submissions/{id}/ - Get specific submission details
     """
-    permission_classes = [IsAuthenticated, IsPatient]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request, submission_id):
-        """Get specific submission details for authenticated patient."""
+        """Get specific submission details."""
         try:
-            patient = request.user.patient_profile
-        except Patient.DoesNotExist:
-            return not_found_response("Patient profile not found")
-        
-        try:
-            # Ensure submission belongs to this patient
-            submission = PatientSubmission.objects.get(
-                id=submission_id,
-                patient=patient
-            )
+            submission = PatientSubmission.objects.get(id=submission_id)
+            
+            # Authorization check:
+            # Patients can only see their own submissions
+            if request.user.role == 'patient':
+                try:
+                    patient = request.user.patient_profile
+                    if submission.patient != patient:
+                        return error_response(code="ACCESS_DENIED", status_code=403, message="Forbidden")
+                except Patient.DoesNotExist:
+                    return error_response(code="PROFILE_MISSING", status_code=403, message="Patient profile missing")
+            
+            # Staff (Admin/Doctor/Nurse) can see any submission
+            elif request.user.role not in ['admin', 'doctor', 'nurse', 'staff']:
+                return error_response(code="ACCESS_DENIED", status_code=403, message="Unauthorized role")
+                
         except PatientSubmission.DoesNotExist:
             return not_found_response("Submission not found")
         
-        # Use PatientSubmissionSerializer for patient-facing detail
+        # Use PatientSubmissionSerializer for enriched data (demographics + AI)
         serializer = PatientSubmissionSerializer(submission)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

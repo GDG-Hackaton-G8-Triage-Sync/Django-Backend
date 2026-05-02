@@ -7,50 +7,69 @@ This document provides a comprehensive list of the REST API endpoints available 
 ### 1. Submit Triage Request
 `POST /api/v1/triage/`
 - **Body**: `{"description": "string", "photo_name": "string"}`
-- **Note**: Triggers real-time AI analysis and broadcasts to staff.
+- **Response**: Full `TriageItem` object (see Schema below).
+- **Behavior**: Triggers real-time AI analysis and broadcasts to staff.
 
 ### 2. Standalone AI Analysis
 `POST /api/v1/triage/ai/`
 - **Purpose**: Get a triage recommendation without creating a permanent record.
 - **Body**: `{"symptoms": "...", "age": 45, "gender": "male"}`
+- **Response**: AI assessment including priority, condition, and reasoning.
 
 ### 3. Personal Profile
 `GET /api/v1/profile/` | `PATCH /api/v1/profile/`
-- **Purpose**: Manage patient demographics and health history (allergies, medications).
+- **Purpose**: Manage patient demographics and health history.
+- **Fields**: `name`, `age`, `gender`, `blood_type`, `health_history`, `allergies`, `medications`, `lifestyle_habits`.
 
 ---
 
-## 👨‍⚕️ Staff & Clinical Endpoints (Nurse/Doctor)
+## 👨‍⚕️ Staff & Clinical Endpoints (Nurse/Doctor/Admin)
 
 ### 1. Patient Queue
 `GET /api/v1/dashboard/staff/patients/`
 - **Filters**: `status` (waiting/in_progress/completed), `priority` (1-5).
 - **Ordering**: Automatically sorted by priority (1=Critical) and urgency score.
 
-### 2. Update Status
+### 2. Patient Detail (Clinical View)
+`GET /api/v1/patients/submissions/{id}/`
+- **Access**: Staff/Admin only (unless it's the patient's own record).
+- **Returns**: Complete clinical profile and AI diagnostic reasoning.
+
+### 3. Update Status
 `PATCH /api/v1/dashboard/staff/patient/{id}/status/`
 - **Body**: `{"status": "in_progress"}`
+- **Transitions**: `waiting` -> `in_progress` -> `completed`.
 
-### 3. Manual Priority Override
-`PATCH /api/v1/dashboard/staff/patient/{id}/priority/`
-- **Body**: `{"priority": 1}`
+### 4. Staff Assignment
+`PATCH /api/v1/triage/{id}/assign/`
+- **Access**: Staff/Admin only.
+- **Behavior**: Assigns the logged-in staff member to the case and moves status to `in_progress`.
 
-### 4. Verify Case
+### 5. Verify Case
 `PATCH /api/v1/dashboard/staff/patient/{id}/verify/`
-- **Purpose**: Mark a case as clinically reviewed.
+- **Purpose**: Medical professional sign-off on AI priority.
 
 ---
 
-## 🛡️ Admin Endpoints
+## 📋 Data Schema: TriageItem
 
-### 1. User Management
-- `GET /api/v1/admin/users/`: List all users.
-- `PATCH /api/v1/admin/users/{id}/role/`: Change user roles.
-- `PATCH /api/v1/admin/users/{id}/suspend/`: Suspend/Unsuspend accounts.
+The `TriageItem` is the core object returned by detail and history endpoints.
 
-### 2. System Monitoring
-- `GET /api/v1/admin/overview/`: Real-time system stats.
-- `GET /api/v1/admin/analytics/`: Trends, peak hours, and condition breakdowns.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | Integer | Unique identifier. |
+| `patient_name` | String | Full name of the patient. |
+| `patient_age` | Integer | Patient age at time of submission. |
+| `patient_blood_type`| String | A+, O-, etc. (Crucial for hemorrhage cases). |
+| `symptoms` | String | Raw text description provided by user. |
+| `condition` | String | AI-detected clinical impression. |
+| `priority` | Integer | Triage Level (1-5, where 1 is Critical). |
+| `urgency_score` | Integer | Granular severity (0-100). |
+| `confidence` | Float | AI self-assessed certainty (0.0 - 1.0). |
+| `reason` | String | Medically grounded AI reasoning for the level. |
+| `explanation` | Array | Specific symptom vectors identified by AI. |
+| `status` | String | `waiting`, `in_progress`, or `completed`. |
+| `assigned_staff_name`| String | Username of assigned nurse/doctor. |
 
 ---
 
@@ -64,4 +83,4 @@ The API uses standardized error codes for easier frontend handling:
 | `INVALID_CREDENTIALS`| 401 | Login failed. |
 | `FORBIDDEN` | 403 | User role does not have permission. |
 | `NOT_FOUND` | 404 | Resource does not exist. |
-| `TRIAGE_ERROR` | 502 | AI service is temporarily down. |
+| `TRIAGE_ERROR` | 502 | AI service is temporarily down (Switch to manual). |

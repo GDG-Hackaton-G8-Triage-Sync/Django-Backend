@@ -429,12 +429,14 @@ class TriageSubmissionView(APIView):
 
             # Extract data from Member 6's response format
             triage_data = triage_result.get("data", {}).get("triage_result", {})
+            ai_contract = triage_result.get("data", {}).get("ai_contract", {})
+            
             priority = triage_data.get("priority", 3)
             urgency_score = triage_data.get("urgency_score", 50)
-            condition = triage_data.get("condition", "Unknown")
+            condition = ai_contract.get("condition", "Unknown")
             triage_status = triage_data.get("status", "waiting")
 
-            # Save to database (Member 7's model)
+            # Save to database (Member 7's model) with enriched AI fields
             submission = PatientSubmission.objects.create(
                 patient=patient,
                 symptoms=description,  # Store in symptoms field
@@ -442,7 +444,13 @@ class TriageSubmissionView(APIView):
                 priority=priority,
                 urgency_score=urgency_score,
                 condition=condition,
-                status=triage_status
+                status=triage_status,
+                category=ai_contract.get("category"),
+                explanation=ai_contract.get("explanation", []),
+                reason=ai_contract.get("reason"),
+                recommended_action=ai_contract.get("recommended_action"),
+                confidence=ai_contract.get("confidence"),
+                source=triage_result.get("data", {}).get("source", "GEMINI_AI")
             )
 
             # Broadcast WebSocket event (Member 8) - using correct function

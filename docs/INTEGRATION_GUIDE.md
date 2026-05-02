@@ -2,83 +2,59 @@
 
 This guide provides specific implementation patterns for integrating the TriageSync backend into a Flutter mobile application.
 
-## 📦 Recommended Packages
-
-```yaml
-dependencies:
-  dio: ^5.4.0              # Powerful HTTP client with interceptors
-  web_socket_channel: ^2.4.0 # WebSocket handling
-  flutter_secure_storage: ^9.0.0 # Securely storing JWTs
-  json_annotation: ^4.8.1   # Type-safe model serialization
-```
-
----
-
-## 🔐 JWT Interceptor Logic
-
-Implement an interceptor to handle token refreshing automatically. This ensures a seamless user experience without manual logins.
-
-```dart
-class AuthInterceptor extends Interceptor {
-  @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
-      // 1. Attempt to refresh token
-      // 2. If success, retry the original request
-      // 3. If failure, redirect to Login
-    }
-    return handler.next(err);
-  }
-}
-```
-
----
-
-## 📡 WebSocket Manager
-
-Use a persistent service to manage the WebSocket connection.
-
-```dart
-class WebSocketService {
-  WebSocketChannel? _channel;
-
-  void connect(String token) {
-    final url = 'ws://api.triagesync.com/ws/triage/events/?token=$token';
-    _channel = WebSocketChannel.connect(Uri.parse(url));
-    
-    _channel!.stream.listen((message) {
-      final data = jsonDecode(message);
-      _handleEvent(data);
-    });
-  }
-}
-```
-
----
-
 ## 🏗️ Data Models
 
-### User Roles
-```dart
-enum UserRole { patient, nurse, doctor, admin }
-```
+### Updated TriageItem Model
+Ensure your frontend model includes the newer clinical and AI fields for the **Patient Detail** screen.
 
-### Triage Submission
 ```dart
 class TriageItem {
   final int id;
-  final String description;
-  final int priority;      // 1-5
-  final int urgencyScore; // 0-100
-  final String status;    // waiting, in_progress, completed
+  final String status;          // waiting, in_progress, completed
+  final int priority;          // 1 (Critical) to 5 (Routine)
+  final double confidence;     // 0.0 to 1.0 (Multiply by 100 for UI)
+  
+  // Patient Demographics
+  final String patientName;
+  final int? patientAge;
+  final String? bloodType;
+  final String? medicalHistory;
+  final String? allergies;
+
+  // AI Reasoning
+  final String condition;      // e.g. "Acute Coronary Syndrome"
+  final String reason;         // Full sentence clinical rationale
+  final List<String> explanation; // List of key symptom findings
+  
+  // ... constructors and fromJson mapping ...
 }
 ```
 
 ---
 
-## 🚀 Environment Configuration
+## 🔐 Authentication & Permissions
 
-Ensure you handle the Local Development IP variance:
-- **Android Emulator**: Use `10.0.2.2` instead of `127.0.0.1`.
-- **iOS Simulator**: Use `127.0.0.1` or `localhost`.
-- **Physical Device**: Use your computer's local network IP (e.g., `192.168.1.5`).
+### Role-Based Views
+- **Patients**: Should only access `/api/v1/triage/` (POST) and `/api/v1/patients/submissions/{id}/` (GET - restricted to own ID).
+- **Staff/Admins**: Have full access to the **Patient Queue** and **Patient Detail** clinical views.
+
+### Permission Fix (April 2026 Update)
+The backend now allows **Admins** and **Staff** to view the `PatientSubmissionDetailView`. Ensure your app checks the `role` from the login response to toggle the "Confirm AI Priority" and "Assign Staff" buttons.
+
+---
+
+## 📡 Real-time Handling
+
+### WebSocket Connection
+**Path**: `ws://<HOST>/ws/triage/events/?token=<JWT>`
+
+### PING/PONG (Heartbeat)
+The backend uses Daphne (ASGI). It is recommended that the Flutter app sends a heartbeat message or uses the `pingInterval` in `WebSocketChannel` to keep connections alive in production environments.
+
+---
+
+## 🚀 Development Tips
+
+1. **AI Reasoning**: On the **Patient Detail** screen, if `confidence < 0.5`, display a warning icon suggesting immediate manual review.
+2. **Emergency Flags**: If `is_critical` is true, pulse the UI in red.
+3. **Staff Names**: Use the `assigned_staff_name` field to show which nurse or doctor is currently handling the case.

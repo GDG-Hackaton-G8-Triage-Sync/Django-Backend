@@ -116,43 +116,42 @@ def calculate_priority(urgency_score: int) -> int:
 def safe_infer_priority(symptoms: str) -> dict:
     """
     Call AI service and validate its output.
-    Falls back to default values if AI fails or returns invalid data.
+    Prioritizes Gemini AI over legacy rule-based inference.
     """
     try:
-        # Legacy-first compatibility path used by existing tests/callers.
-        legacy_ai = ai_service.infer_priority(symptoms)
-        if validate_ai_output(legacy_ai):
-            legacy_ai.setdefault("source", "AI_SYSTEM")
-            return legacy_ai
-
-        # Prefer the full AI recommendation (Gemini) but keep the legacy
-        # `infer_priority` compatibility shape for callers/tests. `get_triage_recommendation`
-        # returns the normalized M5 contract (priority_level / urgency_score / condition).
+        # 1. Try Gemini (Full AI Recommendation)
         ai_raw = get_triage_recommendation(symptoms)
 
-        # If AI returned an error envelope, fall back immediately.
-        if not isinstance(ai_raw, dict) or ai_raw.get("error"):
-            fallback = get_fallback_ai_output()
-            fallback["source"] = "AI_FALLBACK"
-            return fallback
+        # If AI returned a valid recommendation (not an error envelope)
+        if isinstance(ai_raw, dict) and not ai_raw.get("error"):
+            ai_raw.setdefault("source", "GEMINI_AI")
+            return ai_raw
 
-        # Normalize Gemini/M5 shape into legacy shape expected by validators/tests.
-        legacy = {
-            "priority": int(ai_raw.get("priority_level") or ai_raw.get("priority") or calculate_priority(ai_raw.get("urgency_score", 50))),
-            "urgency_score": int(ai_raw.get("urgency_score", 50)),
-            "condition": ai_raw.get("condition", "Unknown"),
-        }
-
-        if validate_ai_output(legacy):
-            legacy["source"] = ai_raw.get("source", "AI_SYSTEM")
-            return legacy
+        # 2. Fallback to Legacy Rule-Based Inference
+        logger.info("[Triage] Gemini failed or returned error, falling back to rule-based inference")
+        legacy_ai = ai_service.infer_priority(symptoms)
+        if validate_ai_output(legacy_ai):
+            # Map legacy format to the richer M5 format
+            return {
+                "priority_level": legacy_ai.get("priority", 5),
+                "urgency_score": legacy_ai.get("urgency_score", 50),
+                "condition": legacy_ai.get("condition", "Unknown"),
+                "category": "General",
+                "explanation": ["Rule-based fallback triggered"],
+                "reason": "Analysis of symptom vectors indicates clinical correlation required.",
+                "recommended_action": "Staff clinical review recommended.",
+                "confidence": 0.0,
+                "source": "RULE_ENGINE_FALLBACK",
+                "is_critical": legacy_ai.get("urgency_score", 0) >= PRIORITY_THRESHOLDS["critical"]
+            }
 
         fallback = get_fallback_ai_output()
-        fallback["source"] = "AI_FALLBACK"
+        fallback["source"] = "SYSTEM_FALLBACK"
         return fallback
-    except Exception:
+    except Exception as e:
+        logger.error(f"[Triage] AI inference failed critically: {e}")
         fallback = get_fallback_ai_output()
-        fallback["source"] = "AI_FALLBACK"
+        fallback["source"] = "ERROR_FALLBACK"
         return fallback
 
 
@@ -313,31 +312,14 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
     # 2. Check for emergency override
     override = check_emergency_override(clean_symptoms)
     ai_contract_fields = [
-        "urgency_score", "condition", "category", "explanation", "recommended_action", "reason", "priority_level", "is_critical", "source"
+        "urgency_score", "condition", "category", "explanation", "recommended_action", 
+        "reason", "priority_level", "is_critical", "source", "confidence"
     ]
+    
     if override["override"]:
         ai_payload = override
-        urgency_score = ai_payload["urgency_score"]
-        condition = ai_payload["condition"]
-        source = ai_payload["source"]
     else:
-        ai_output = safe_infer_priority(clean_symptoms)
-        urgency_score = ai_output.get("urgency_score", 50)
-        condition = ai_output.get("condition", "Unknown")
-        source = ai_output.get("source", "AI_SYSTEM")
-
-        ai_payload = {
-            "urgency_score": urgency_score,
-            "condition": condition,
-            "category": ai_output.get("category", "General"),
-            "explanation": ai_output.get("explanation", ["AI output missing explanation"]),
-            "recommended_action": ai_output.get("recommended_action", "Staff review required"),
-            "reason": ai_output.get("reason", "AI output missing reason."),
-            "priority_level": ai_output.get("priority", ai_output.get("priority_level", calculate_priority(urgency_score))),
-            "is_critical": ai_output.get("is_critical", urgency_score >= PRIORITY_THRESHOLDS["critical"]),
-            "source": source,
-        }
-        source = ai_payload.get("source", "AI_SYSTEM")
+        ai_payload = safe_infer_priority(clean_symptoms)
 
     # 4. Apply business rules (Member 6 logic)
     triage_result = process_triage(ai_payload, current_status)
@@ -346,16 +328,16 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
     trigger_priority_update(
         triage_result["priority"],
         triage_result["urgency_score"],
-        condition
+        ai_payload.get("condition", "Unknown")
     )
     if triage_result["is_critical"]:
-        trigger_critical_alert(triage_result["urgency_score"], condition)
+        trigger_critical_alert(triage_result["urgency_score"], ai_payload.get("condition", "Unknown"))
 
-    # 5. Build SYSTEM RESPONSE (THIS IS YOUR KEY ROLE)
+    # 5. Build SYSTEM RESPONSE
     response = {
         "success": True,
         "data": {
-            "source": source,
+            "source": ai_payload.get("source", "UNKNOWN"),
             "module": "member6_triage_service",
             "triage_result": triage_result,
             "ai_contract": {field: ai_payload.get(field) for field in ai_contract_fields if field in ai_payload},
@@ -365,8 +347,8 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
                 "is_critical": triage_result["is_critical"]
             },
             "admin_view": {
-                "urgency_score": urgency_score,
-                "decision_source": "AI + RULE_ENGINE"
+                "urgency_score": ai_payload.get("urgency_score"),
+                "decision_source": ai_payload.get("source", "AI + RULE_ENGINE")
             },
             "system_meta": {
                 "status_flow": current_status,

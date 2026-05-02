@@ -323,6 +323,7 @@ def normalize_ai_response(data):
       * priority_level clamped to [1,5]; urgency_score clamped to [0,100]
       * category coerced to one of the 5 allowed enum values
       * is_critical coerced to bool
+      * confidence clamped to [0.0, 1.0]
 
     Business-rule coupling between priority_level and is_critical
     (e.g., L1<->critical invariants, criticality-driven priority clamping)
@@ -336,6 +337,14 @@ def normalize_ai_response(data):
     data["urgency_score"] = _clamp_int(data.get("urgency_score"), 0, 100, 50)
     data["category"] = _normalize_category(data.get("category"))
     data["is_critical"] = bool(data.get("is_critical"))
+    
+    # Handle confidence
+    try:
+        conf = float(data.get("confidence", 0.0))
+        data["confidence"] = max(0.0, min(1.0, conf))
+    except (TypeError, ValueError):
+        data["confidence"] = 0.0
+        
     return data
 
 

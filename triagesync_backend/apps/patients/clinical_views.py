@@ -4,18 +4,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.utils import timezone
 
-from triagesync_backend.apps.authentication.permissions import IsAdmin
-from triagesync_backend.apps.core.response import error_response, not_found_response
-from .models import PatientSubmission, StaffNote, VitalsLog
-from .serializers import StaffNoteSerializer, VitalsLogSerializer
-
+from triagesync_backend.apps.authentication.permissions import IsStaffOrAdmin, IsAdmin
 
 class ClinicalVerificationView(APIView):
     """
     Digital signature for clinical triage verification.
     PATCH /api/v1/triage/{id}/verify/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def patch(self, request, submission_id):
         user = request.user
@@ -87,7 +83,7 @@ class StaffAssignmentView(APIView):
     Assign staff member to a triage record.
     PATCH /api/v1/triage/{id}/assign/
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrAdmin]
 
     def patch(self, request, submission_id):
         user = request.user

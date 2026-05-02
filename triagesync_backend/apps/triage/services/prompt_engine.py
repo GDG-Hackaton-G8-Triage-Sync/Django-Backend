@@ -168,6 +168,7 @@ IF severe hemorrhage criteria NOT met:
    - For Level 1-2: Specify immediate interventions (e.g., "Immediate ECG, IV access, cardiac monitoring, aspirin 325mg, transfer to resuscitation bay")
    - For Level 3-5: Specify evaluation plan (e.g., "Vital signs, physical exam, urinalysis, consider antibiotics if UTI confirmed")
    - Include time frame when appropriate (e.g., "Evaluate within 10 minutes")
+9. confidence (float 0.0-1.0): Your self-assessed confidence in this triage recommendation based on input clarity and clinical typicality.
 
 ## Quality Standards:
 - reason: Must explain clinical reasoning, not just restate symptoms
@@ -427,6 +428,7 @@ IF severe hemorrhage criteria NOT met:
    - For Level 3-5: Specify evaluation plan and follow-up
    - Reference document recommendations when appropriate
    - Include time frame when appropriate
+9. confidence (float 0.0-1.0): Your self-assessed confidence in this triage recommendation based on document clarity and clinical typicality.
 
 ## Quality Standards:
 - reason: Must explain clinical reasoning based on document content, not just restate findings
