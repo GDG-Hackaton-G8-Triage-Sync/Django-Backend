@@ -126,6 +126,9 @@ if database_url:
             "HOST": tmpPostgres.hostname,
             "PORT": tmpPostgres.port or 5432,
             "OPTIONS": dict(parse_qsl(tmpPostgres.query)),
+            # Keep DB connections open for a short time to improve performance
+            # under ASGI/Daphne. Controlled via DB_CONN_MAX_AGE (seconds).
+            "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "60")),
         }
     }
 else:
