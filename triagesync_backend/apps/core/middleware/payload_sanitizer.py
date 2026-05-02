@@ -15,7 +15,7 @@ import json
 import re
 from io import BytesIO
 
-from asgiref.sync import iscoroutinefunction, markcoroutinefunction
+from asgiref.sync import iscoroutinefunction
 
 ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description", "blood_type"})
 TRIAGE_PATH_PREFIX = "/api/v1/triage/"
@@ -41,13 +41,15 @@ class PayloadSanitizerMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         self._is_coroutine = iscoroutinefunction(get_response)
+        # If the downstream `get_response` is a coroutine function,
+        # bind our async handler directly to `__call__` so Django/ASGI
+        # invokes the async variant without extra wrapping. Using
+        # markcoroutinefunction on the instance caused double-wrapping
+        # and request handling recursion / cancellation in ASGI.
         if self._is_coroutine:
-            markcoroutinefunction(self)
+            self.__call__ = self.__acall__
 
     def __call__(self, request):
-        if self._is_coroutine:
-            return self.__acall__(request)
-
         if self._should_sanitize(request):
             self._sanitize(request)
         return self.get_response(request)
