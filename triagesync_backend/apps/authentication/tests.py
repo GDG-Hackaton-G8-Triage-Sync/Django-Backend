@@ -616,6 +616,49 @@ class RegistrationAPIIntegrationTests(APITestCase):
         self.assertIn('password2', response.data['details'])
 
 
+class LoginAPIIntegrationTests(APITestCase):
+    """Test login API endpoint"""
+
+    def test_successful_login_returns_tokens(self):
+        user = User.objects.create_user(
+            username='login-user',
+            email='login-user@example.com',
+            password='SecurePassword123!',
+            role='patient',
+        )
+
+        response = self.client.post(
+            '/api/v1/auth/login/',
+            {'username': 'login-user', 'password': 'SecurePassword123!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access_token', response.data)
+        self.assertIn('refresh_token', response.data)
+        self.assertEqual(response.data['user_id'], user.id)
+        self.assertEqual(response.data['email'], user.email)
+        self.assertEqual(response.data['role'], user.role)
+
+    def test_invalid_login_returns_401(self):
+        User.objects.create_user(
+            username='login-user-2',
+            email='login-user-2@example.com',
+            password='SecurePassword123!',
+            role='patient',
+        )
+
+        response = self.client.post(
+            '/api/v1/auth/login/',
+            {'username': 'login-user-2', 'password': 'wrong-password'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('code', response.data)
+        self.assertEqual(response.data['code'], 'AUTHENTICATION_FAILED')
+
+
 if __name__ == '__main__':
     import unittest
     unittest.main()

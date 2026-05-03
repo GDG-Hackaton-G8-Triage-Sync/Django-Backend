@@ -49,7 +49,13 @@ def custom_exception_handler(exc, context):
         elif isinstance(exc, MethodNotAllowed):
             error_code = "METHOD_NOT_ALLOWED"
             # Provide helpful message about allowed methods
-            allowed_methods = getattr(exc, 'detail', {}).get('allowed_methods', [])
+            # Extract allowed methods from the exception
+            # exc.detail is a list of ErrorDetail objects representing allowed methods
+            allowed_methods = []
+            if hasattr(exc, 'detail') and isinstance(exc.detail, list):
+                # Extract string values from ErrorDetail objects
+                allowed_methods = [str(method) for method in exc.detail]
+            
             if allowed_methods:
                 error_message = f"Method '{context['request'].method}' not allowed. Allowed methods: {', '.join(allowed_methods)}"
             else:

@@ -303,3 +303,4 @@ reports/INTEGRATION_HEALTH_REPORT.md
 reports/OPTIMIZATION_PLAN.md
 reports/UNDERUTILIZED_FEATURES_STATUS.md
 force_drop_test_db.py
+triagesync_backend/apps/authentication/tests.py
