@@ -245,7 +245,6 @@ class PatientCurrentSessionView(APIView):
                 "urgency_score": active_submission.urgency_score,
                 "condition": active_submission.condition,
                 "status": active_submission.status,
-                "photo_name": active_submission.photo_name,
                 "created_at": active_submission.created_at.isoformat(),
                 "processed_at": active_submission.processed_at.isoformat() if active_submission.processed_at else None,
             },
@@ -303,3 +302,107 @@ class TriageSubmissionsHistoryView(APIView):
         # Serialize and return as direct array
         serializer = TriageSubmissionHistorySerializer(submissions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ProfilePhotoUploadView(APIView):
+    """
+    Profile photo upload endpoint.
+    
+    POST /api/v1/patients/profile/photo/ - Upload profile photo
+    
+    Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 9.1, 9.2, 9.3
+    """
+    permission_classes = [IsAuthenticated, IsPatient]
+    
+    def post(self, request):
+        """Upload or replace profile photo."""
+        try:
+            patient = request.user.patient_profile
+        except Patient.DoesNotExist:
+            return error_response(
+                code="PROFILE_MISSING",
+                status_code=404,
+                message="Patient profile not found"
+            )
+        
+        # Check if profile_photo file is in request
+        if 'profile_photo' not in request.FILES:
+            return Response({
+                "error": "No profile_photo file provided"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        uploaded_file = request.FILES['profile_photo']
+        
+        # Validate the uploaded photo
+        try:
+            validate_profile_photo(uploaded_file)
+        except ValidationError as e:
+            return Response({
+                "error": str(e.message) if hasattr(e, 'message') else str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Delete old photo if exists
+        if patient.profile_photo:
+            try:
+                patient.profile_photo.delete(save=False)
+                logger.info(f"Deleted old profile photo for patient {patient.id}")
+            except Exception as e:
+                logger.warning(f"Failed to delete old profile photo: {e}")
+        
+        # Save new photo
+        patient.profile_photo = uploaded_file
+        patient.profile_photo_name = uploaded_file.name
+        patient.save()
+        
+        logger.info(f"Uploaded profile photo for patient {patient.id}")
+        
+        return Response({
+            "message": "Profile photo uploaded successfully",
+            "profile_photo": request.build_absolute_uri(patient.profile_photo.url) if patient.profile_photo else None,
+            "profile_photo_name": patient.profile_photo_name
+        }, status=status.HTTP_200_OK)
+
+
+class ProfilePhotoDeleteView(APIView):
+    """
+    Profile photo deletion endpoint.
+    
+    DELETE /api/v1/patients/profile/photo/ - Delete profile photo
+    
+    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 9.4
+    """
+    permission_classes = [IsAuthenticated, IsPatient]
+    
+    def delete(self, request):
+        """Delete profile photo."""
+        try:
+            patient = request.user.patient_profile
+        except Patient.DoesNotExist:
+            return error_response(
+                code="PROFILE_MISSING",
+                status_code=404,
+                message="Patient profile not found"
+            )
+        
+        # Check if patient has a profile photo
+        if not patient.profile_photo:
+            return Response({
+                "error": "No profile photo to delete."
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Delete the photo file
+        try:
+            patient.profile_photo.delete(save=False)
+            logger.info(f"Deleted profile photo file for patient {patient.id}")
+        except Exception as e:
+            logger.error(f"Failed to delete profile photo file: {e}")
+            # Continue anyway to clear the database fields
+        
+        # Clear the database fields
+        patient.profile_photo = None
+        patient.profile_photo_name = None
+        patient.save()
+        
+        logger.info(f"Cleared profile photo fields for patient {patient.id}")
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
