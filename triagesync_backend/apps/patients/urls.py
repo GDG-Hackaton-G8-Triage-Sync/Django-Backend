@@ -5,6 +5,8 @@ from .views import (
     PatientSubmissionDetailView,
     PatientCurrentSessionView,
     TriageSubmissionsHistoryView,
+    ProfilePhotoUploadView,
+    ProfilePhotoDeleteView,
 )
 from .clinical_views import (
     ClinicalVerificationView,
@@ -17,6 +19,10 @@ from .clinical_views import (
 urlpatterns = [
     # Patient profile management
     path("profile/", PatientProfileView.as_view(), name="patient-profile"),
+    
+    # Profile photo management
+    path("profile/photo/", ProfilePhotoUploadView.as_view(), name="profile-photo-upload"),
+    path("profile/photo/", ProfilePhotoDeleteView.as_view(), name="profile-photo-delete"),
     
     # Patient submission history
     path("history/", PatientHistoryView.as_view(), name="patient-history"),

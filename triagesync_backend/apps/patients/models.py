@@ -41,8 +41,7 @@ class PatientSubmission(models.Model):
 
     # INPUT
     symptoms = models.TextField()
-    photo_name = models.CharField(max_length=255, null=True, blank=True)
-    photo = models.ImageField(upload_to="triage_photos/", null=True, blank=True)
+    # Note: photo and photo_name fields removed - profile photos now on Patient model
 
     # TRIAGE OUTPUT
     priority = models.IntegerField(null=True, blank=True)

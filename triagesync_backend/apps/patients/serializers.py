@@ -1,5 +1,15 @@
 from rest_framework import serializers
 from .models import PatientSubmission, StaffNote, VitalsLog
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Chronic conditions keyword list for risk factor extraction
+CHRONIC_CONDITIONS = [
+    'diabetes', 'hypertension', 'heart disease', 'asthma', 'copd',
+    'kidney disease', 'liver disease', 'cancer', 'stroke', 'arthritis',
+    'obesity', 'high blood pressure', 'high cholesterol'
+]
 
 class StaffNoteSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.username', read_only=True)
@@ -51,6 +61,52 @@ class PatientSubmissionSerializer(serializers.ModelSerializer):
     # Staff Info
     assigned_staff_name = serializers.CharField(source='assigned_to.username', read_only=True, allow_null=True)
     verified_by_name = serializers.CharField(source='verified_by_user.username', read_only=True, allow_null=True)
+    
+    # Computed fields
+    has_allergies = serializers.SerializerMethodField()
+    risk_factors = serializers.SerializerMethodField()
+
+    def get_has_allergies(self, obj):
+        """
+        Returns True if patient has any allergies, False otherwise.
+        Checks if the allergies field is non-empty after stripping whitespace.
+        """
+        try:
+            if not obj.patient:
+                return False
+            allergies = obj.patient.allergies
+            if allergies and allergies.strip():
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking has_allergies for submission {obj.id}: {e}")
+            return False
+
+    def get_risk_factors(self, obj):
+        """
+        Extracts chronic condition keywords from patient's health history.
+        Returns a list of matched chronic conditions (no duplicates).
+        Uses case-insensitive matching against CHRONIC_CONDITIONS list.
+        """
+        try:
+            if not obj.patient:
+                return []
+            health_history = obj.patient.health_history
+            if not health_history:
+                return []
+            
+            health_history_lower = health_history.lower()
+            found_conditions = []
+            
+            for condition in CHRONIC_CONDITIONS:
+                if condition.lower() in health_history_lower:
+                    if condition not in found_conditions:
+                        found_conditions.append(condition)
+            
+            return found_conditions
+        except Exception as e:
+            logger.error(f"Error extracting risk_factors for submission {obj.id}: {e}")
+            return []
 
     class Meta:
         model = PatientSubmission
@@ -59,10 +115,11 @@ class PatientSubmissionSerializer(serializers.ModelSerializer):
             'patient_blood_type', 'patient_medical_history', 'patient_allergies', 
             'patient_medications', 'patient_lifestyle_habits',
             'symptoms', 'priority', 'urgency_score', 'condition', 'category',
-            'status', 'photo_name', 'is_critical', 'explanation', 'reason', 
+            'status', 'is_critical', 'explanation', 'reason', 
             'recommended_action', 'confidence', 'source',
             'assigned_to', 'assigned_staff_name',
-            'created_at', 'processed_at', 'verified_by_user', 'verified_by_name', 'verified_at'
+            'created_at', 'processed_at', 'verified_by_user', 'verified_by_name', 'verified_at',
+            'has_allergies', 'risk_factors'
         ]
         read_only_fields = fields
 
