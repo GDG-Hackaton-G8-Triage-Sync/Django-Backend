@@ -50,9 +50,9 @@ That field is also propagated into notification metadata so staff-facing alerts 
 
 ## Photo Upload Usage
 
-The optional `photo` upload on a patient submission is used to attach a supporting clinical image to the triage record.
-The backend stores the uploaded file under `triage_photos/` and preserves the original `photo_name` for display/reference.
-Use it when the case benefits from visual context such as a wound, rash, swelling, or injury photo.
+Triage endpoints no longer accept or persist new photo uploads. Profile photos are handled via the user profile API (`/api/v1/profile/`), which accepts an optional `profile_photo` file and exposes `profile_photo_name` for display.
+
+For historical and audit purposes, legacy fields `PatientSubmission.photo` and `PatientSubmission.photo_name` remain in the database and may contain prior uploads, but triage flows will not populate these fields going forward.
 
 ## PDF Triage Behavior
 

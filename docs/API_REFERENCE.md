@@ -6,9 +6,10 @@ This document provides a comprehensive list of the REST API endpoints available 
 
 ### 1. Submit Triage Request
 `POST /api/v1/triage/`
-- **Body**: `{"description": "string", "photo_name": "string"}`
+- **Body**: `{"description": "string"}`
 - **Response**: Full `TriageItem` object (see Schema below).
 - **Behavior**: Triggers real-time AI analysis and broadcasts to staff.
+- **Note**: This endpoint does not accept or persist new photo uploads. Use the profile endpoints to upload or manage a patient's `profile_photo` and `profile_photo_name`.
 
 ### 2. Standalone AI Analysis
 `POST /api/v1/triage/ai/`
@@ -19,7 +20,9 @@ This document provides a comprehensive list of the REST API endpoints available 
 ### 3. Personal Profile
 `GET /api/v1/profile/` | `PATCH /api/v1/profile/`
 - **Purpose**: Manage patient demographics and health history.
-- **Fields**: `name`, `age`, `gender`, `blood_type`, `health_history`, `allergies`, `medications`, `lifestyle_habits`.
+- **Fields**: `name`, `age`, `gender`, `blood_type`, `health_history`, `allergies`, `medications`, `lifestyle_habits`, `profile_photo` (file), `profile_photo_name` (string).
+
+The profile endpoints accept an optional `profile_photo` file upload and return `profile_photo_name` for display. This is the supported location for new patient photo uploads.
 
 ---
 

@@ -46,6 +46,8 @@ class PatientProfileView(APIView):
             "user_id": patient.user.id,
             "username": patient.user.username,
             "email": patient.user.email,
+            "profile_photo": patient.profile_photo.url if getattr(patient, "profile_photo", None) else None,
+            "profile_photo_name": getattr(patient, "profile_photo_name", None),
         }, status=status.HTTP_200_OK)
     
     def patch(self, request):
@@ -73,6 +75,17 @@ class PatientProfileView(APIView):
                 patient.date_of_birth = None
         if 'contact_info' in request.data:
             patient.contact_info = request.data['contact_info']
+
+        # Handle optional profile photo upload (multipart/form-data)
+        if 'profile_photo' in request.FILES:
+            uploaded = request.FILES['profile_photo']
+            patient.profile_photo = uploaded
+            patient.profile_photo_name = getattr(uploaded, 'name', None)
+
+        # Allow clients to remove profile photo by sending explicit null
+        if request.data.get('remove_profile_photo') in [True, 'true', '1', 1]:
+            patient.profile_photo = None
+            patient.profile_photo_name = None
         
         patient.save()
         logger.info(f"Updated patient profile {patient.id}")

@@ -22,6 +22,9 @@ class Patient(models.Model):
     allergies = models.TextField(blank=True, null=True)
     current_medications = models.TextField(blank=True, null=True)
     bad_habits = models.TextField(blank=True, null=True)
+    # Optional profile photo (migrated from triage submissions)
+    profile_photo = models.FileField(upload_to="profile_photos/", null=True, blank=True)
+    profile_photo_name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return self.name

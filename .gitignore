@@ -304,3 +304,4 @@ reports/OPTIMIZATION_PLAN.md
 reports/UNDERUTILIZED_FEATURES_STATUS.md
 force_drop_test_db.py
 triagesync_backend/apps/authentication/tests.py
+profile_photos/avatar.png

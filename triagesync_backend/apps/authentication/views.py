@@ -257,6 +257,8 @@ class GenericProfileView(APIView):
                     'allergies': patient.allergies,
                     'current_medications': patient.current_medications,
                     'bad_habits': patient.bad_habits,
+                    'profile_photo': patient.profile_photo.url if getattr(patient, 'profile_photo', None) else None,
+                    'profile_photo_name': getattr(patient, 'profile_photo_name', None),
                 }, status=status.HTTP_200_OK)
             else:
                 # Return User model for staff
@@ -303,8 +305,18 @@ class GenericProfileView(APIView):
                     patient = Patient.objects.select_for_update().get(user=user)
                     
                     # Update all provided fields
+                    profile_photo = validated_data.pop('profile_photo', None)
+                    remove_profile_photo = validated_data.pop('remove_profile_photo', False)
+
                     for field, value in validated_data.items():
                         setattr(patient, field, value)
+
+                    if profile_photo is not None:
+                        patient.profile_photo = profile_photo
+                        patient.profile_photo_name = getattr(profile_photo, 'name', None)
+                    elif remove_profile_photo:
+                        patient.profile_photo = None
+                        patient.profile_photo_name = None
                     
                     patient.save()
                     
@@ -323,6 +335,8 @@ class GenericProfileView(APIView):
                         'allergies': patient.allergies,
                         'current_medications': patient.current_medications,
                         'bad_habits': patient.bad_habits,
+                        'profile_photo': patient.profile_photo.url if getattr(patient, 'profile_photo', None) else None,
+                        'profile_photo_name': getattr(patient, 'profile_photo_name', None),
                     }, status=status.HTTP_200_OK)
                 else:
                     # Update User model for staff (name, email only)

@@ -51,8 +51,12 @@ def _json_safe_value(value):
     return value
 
 
-def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=None, photo_name=None):
-    """Persist AI/PDF triage interactions as permanent submissions for authenticated patients."""
+def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=None):
+    """Persist AI/PDF triage interactions as permanent submissions for authenticated patients.
+
+    NOTE: Photo persistence from AI/PDF flows has been disabled. Profile photos
+    are stored on the Patient model instead.
+    """
     user = request.user if request.user and request.user.is_authenticated else None
     if not user or getattr(user, "role", None) != "patient":
         return None
@@ -77,10 +81,11 @@ def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=
         if extra_metadata:
             metadata.update(_json_safe_value(extra_metadata))
 
+        # Do NOT persist photo/file references coming from AI/PDF flows.
+        # Profile photos live on the Patient model (`profile_photo`).
         return PatientSubmission.objects.create(
             patient=patient,
             symptoms=symptoms,
-            photo_name=photo_name,
             priority=ai_output.get("priority_level"),
             urgency_score=ai_output.get("urgency_score"),
             condition=ai_output.get("condition"),
@@ -501,7 +506,6 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
                         "extracted_text_length": len(pdf_text),
                     },
                 },
-                photo_name=getattr(pdf_file, "name", None),
             )
 
             return Response(response_data)
@@ -560,7 +564,6 @@ class TriageSubmissionView(APIView):
         
         # Get description from request (API contract field name)
         description = request.data.get("description") or request.data.get("symptoms")
-        photo_name = request.data.get("photo_name")
         submitted_inputs = {
             key: _json_safe_value(request.data.get(key))
             for key in getattr(request.data, "keys", lambda: [])()
@@ -623,7 +626,6 @@ class TriageSubmissionView(APIView):
                 "submitted_inputs": submitted_inputs,
                 "triage_inputs": {
                     "description": description,
-                    "photo_name": photo_name,
                     "age": request.data.get("age"),
                     "gender": request.data.get("gender"),
                     "blood_type": request.data.get("blood_type"),
@@ -639,7 +641,6 @@ class TriageSubmissionView(APIView):
             submission = PatientSubmission.objects.create(
                 patient=patient,
                 symptoms=description,  # Store in symptoms field
-                photo_name=photo_name,
                 priority=priority,
                 urgency_score=urgency_score,
                 condition=condition,
@@ -711,7 +712,6 @@ class TriageSubmissionView(APIView):
                 "urgency_score": urgency_score,
                 "condition": condition,
                 "status": triage_status,
-                "photo_name": photo_name,
                 "created_at": submission.created_at.isoformat()
             }, status=status.HTTP_201_CREATED)
 

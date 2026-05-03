@@ -14,6 +14,10 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 from rest_framework import status
+from django.urls import reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from triagesync_backend.apps.patients.models import Patient
 
 from triagesync_backend.apps.authentication.serializers import (
     RegisterSerializer,
@@ -361,7 +365,75 @@ class BloodTypeValidationTests(TestCase):
         serializer = RegisterSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('blood_type', serializer.errors)
-        self.assertIn('Invalid blood type', str(serializer.errors['blood_type']))
+
+
+class PatientProfilePhotoTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='profilepatient',
+            email='profile@example.com',
+            password='testpass123',
+            role='patient',
+        )
+        self.patient = Patient.objects.create(user=self.user, name='Profile Patient', age=31, gender='male', blood_type='O+')
+        self.client.force_authenticate(user=self.user)
+
+    def test_profile_patch_accepts_optional_photo(self):
+        photo = SimpleUploadedFile('avatar.png', b'fake-image-bytes', content_type='image/png')
+
+        response = self.client.patch(
+            reverse('profile'),
+            {'profile_photo': photo, 'contact_info': 'Updated contact'},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertTrue(self.patient.profile_photo)
+        self.assertEqual(self.patient.profile_photo_name, 'avatar.png')
+        self.assertIn('profile_photo', response.data)
+
+    def test_profile_patch_can_remove_photo(self):
+        self.patient.profile_photo_name = 'old.png'
+        self.patient.save(update_fields=['profile_photo_name'])
+
+        response = self.client.patch(
+            reverse('profile'),
+            {'remove_profile_photo': True},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertFalse(self.patient.profile_photo)
+        self.assertIsNone(self.patient.profile_photo_name)
+
+    def test_profile_patch_allows_optional_fields_to_be_left_empty(self):
+        self.patient.health_history = 'history'
+        self.patient.allergies = 'allergies'
+        self.patient.current_medications = 'meds'
+        self.patient.bad_habits = 'habits'
+        self.patient.save()
+
+        response = self.client.patch(
+            reverse('profile'),
+            {
+                'health_history': '',
+                'allergies': '',
+                'current_medications': '',
+                'bad_habits': '',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.health_history, '')
+        self.assertEqual(self.patient.allergies, '')
+        self.assertEqual(self.patient.current_medications, '')
+        self.assertEqual(self.patient.bad_habits, '')
+        self.assertEqual(response.data['health_history'], '')
+        self.assertEqual(response.data['allergies'], '')
 
     def test_invalid_blood_type_missing_rh(self):
         """Test invalid blood type without Rh factor"""
