@@ -325,6 +325,20 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
         "reason", "priority_level", "is_critical", "source", "confidence"
     ]
     
+    # Default values for all contract fields
+    ai_contract_defaults = {
+        "urgency_score": 50,
+        "condition": "Unknown",
+        "category": "General",
+        "explanation": [],
+        "recommended_action": "Staff review required",
+        "reason": "No specific reason provided",
+        "priority_level": 5,
+        "is_critical": False,
+        "source": "UNKNOWN",
+        "confidence": 0.0
+    }
+    
     if override["override"]:
         ai_payload = override
     else:
@@ -342,14 +356,18 @@ def evaluate_triage(symptoms: str, current_status="PENDING"):
     if triage_result["is_critical"]:
         trigger_critical_alert(triage_result["urgency_score"], ai_payload.get("condition", "Unknown"))
 
-    # 5. Build SYSTEM RESPONSE
+    # 5. Build SYSTEM RESPONSE with guaranteed contract fields
+    ai_contract = {}
+    for field in ai_contract_fields:
+        ai_contract[field] = ai_payload.get(field, ai_contract_defaults.get(field))
+    
     response = {
         "success": True,
         "data": {
             "source": ai_payload.get("source", "UNKNOWN"),
             "module": "member6_triage_service",
             "triage_result": triage_result,
-            "ai_contract": {field: ai_payload.get(field) for field in ai_contract_fields if field in ai_payload},
+            "ai_contract": ai_contract,
             "staff_view": {
                 "priority": triage_result["priority"],
                 "status": triage_result["status"],
