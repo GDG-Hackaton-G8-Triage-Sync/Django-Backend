@@ -9,7 +9,7 @@ from django.db import transaction
 from triagesync_backend.apps.authentication.models import User
 from triagesync_backend.apps.authentication.permissions import IsAdmin
 from triagesync_backend.apps.patients.models import PatientSubmission
-from .models import AuditLog
+from .models import AuditLog, SystemConfig
 from triagesync_backend.apps.core.response import error_response
 from .serializers import AdminUserSerializer, RoleUpdateSerializer, AuditLogSerializer
 from .utils import log_action
@@ -260,21 +260,30 @@ class SystemConfigView(APIView):
             
         try:
             with transaction.atomic():
-                config, created = SystemConfig.objects.select_for_update().get_or_create(key=key)
-                old_value = config.value
-                config.value = value
-                config.updated_by = request.user
-                config.save()
+                config, created = SystemConfig.objects.select_for_update().get_or_create(
+                    key=key,
+                    defaults={'value': value, 'updated_by': request.user}
+                )
+                
+                if not created:
+                    # Update existing config
+                    old_value = config.value
+                    config.value = value
+                    config.updated_by = request.user
+                    config.save()
+                else:
+                    # New config was created with defaults
+                    old_value = None
                 
                 log_action(
                     actor=request.user,
                     action_type="CONFIG_UPDATE",
-                    target_description=f"System config '{key}' updated",
+                    target_description=f"System config '{key}' {'created' if created else 'updated'}",
                     metadata={"old_value": old_value, "new_value": value}
                 )
                 
                 return Response(
-                    {"message": f"Config '{key}' updated successfully"},
+                    {"message": f"Config '{key}' {'created' if created else 'updated'} successfully"},
                     status=status.HTTP_200_OK
                 )
         except Exception as e:
