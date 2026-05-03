@@ -49,6 +49,9 @@ render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
 if render_hostname:
     normalized_allowed_hosts.append(render_hostname)
 
+# Django's test client uses 'testserver' as the default HTTP_HOST for integration tests.
+normalized_allowed_hosts.append('testserver')
+
 # Keep order but remove duplicates/empties.
 ALLOWED_HOSTS = list(dict.fromkeys([host for host in normalized_allowed_hosts if host]))
 
