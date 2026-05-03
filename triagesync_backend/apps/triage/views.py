@@ -41,6 +41,67 @@ User = get_user_model()
 MAX_INPUT_LENGTH = 500
 
 
+def _json_safe_value(value):
+    if hasattr(value, "name"):
+        return getattr(value, "name", str(value))
+    if isinstance(value, dict):
+        return {key: _json_safe_value(inner_value) for key, inner_value in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    return value
+
+
+def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=None, photo_name=None):
+    """Persist AI/PDF triage interactions as permanent submissions for authenticated patients."""
+    user = request.user if request.user and request.user.is_authenticated else None
+    if not user or getattr(user, "role", None) != "patient":
+        return None
+
+    try:
+        patient = getattr(user, "patient_profile", None)
+        if patient is None:
+            patient = Patient.objects.filter(user=user).first()
+        if patient is None:
+            patient = Patient.objects.create(user=user, name=user.username)
+
+        submitted_inputs = {
+            key: _json_safe_value(request.data.get(key))
+            for key in getattr(request.data, "keys", lambda: [])()
+        }
+
+        metadata = {
+            "submitted_inputs": submitted_inputs,
+            "ai_snapshot": _json_safe_value(ai_output),
+            "source": source,
+        }
+        if extra_metadata:
+            metadata.update(_json_safe_value(extra_metadata))
+
+        return PatientSubmission.objects.create(
+            patient=patient,
+            symptoms=symptoms,
+            photo_name=photo_name,
+            priority=ai_output.get("priority_level"),
+            urgency_score=ai_output.get("urgency_score"),
+            condition=ai_output.get("condition"),
+            category=ai_output.get("category"),
+            is_critical=bool(ai_output.get("is_critical", False)),
+            explanation=ai_output.get("explanation", []),
+            recommended_action=ai_output.get("recommended_action"),
+            reason=ai_output.get("reason"),
+            confidence=ai_output.get("confidence"),
+            source=source,
+            requires_immediate_attention=bool(ai_output.get("requires_immediate_attention", False)),
+            specialist_referral_suggested=bool(ai_output.get("specialist_referral_suggested", False)),
+            critical_keywords=ai_output.get("critical_keywords", []),
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger = logging.getLogger("triage.persistence")
+        logger.warning("Failed to persist AI triage submission: %s", exc)
+        return None
+
+
 def is_relevant(text):
     if not text or not isinstance(text, str):
         return False
@@ -225,6 +286,25 @@ class TriageAIView(APIView):
             response_data["source"] = "ai"
             if warnings:
                 response_data["warning"] = warnings
+
+            enriched_output = dict(result)
+            enriched_output["source"] = "ai"
+            if warnings:
+                enriched_output["warning"] = warnings
+            _persist_ai_submission(
+                request=request,
+                symptoms=symptoms,
+                ai_output=enriched_output,
+                source="AI_ENDPOINT",
+                extra_metadata={
+                    "triage_inputs": {
+                        "age": age,
+                        "gender": gender,
+                        "blood_type": blood_type,
+                    }
+                },
+            )
+
             return Response(response_data)
 
         logger = logging.getLogger("triage.ai")
@@ -400,6 +480,30 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
             response_data["source"] = "ai"
             if warnings:
                 response_data["warning"] = warnings
+
+            enriched_output = dict(result)
+            enriched_output["source"] = "ai"
+            if warnings:
+                enriched_output["warning"] = warnings
+            _persist_ai_submission(
+                request=request,
+                symptoms=symptoms_prompt,
+                ai_output=enriched_output,
+                source="PDF_TRIAGE_ENDPOINT",
+                extra_metadata={
+                    "triage_inputs": {
+                        "age": pdf_age,
+                        "gender": pdf_gender,
+                        "blood_type": pdf_blood_type,
+                    },
+                    "pdf_context": {
+                        "file_name": getattr(pdf_file, "name", None),
+                        "extracted_text_length": len(pdf_text),
+                    },
+                },
+                photo_name=getattr(pdf_file, "name", None),
+            )
+
             return Response(response_data)
 
         logger.warning("AI response validation failed. errors=%s", serializer.errors)
@@ -455,8 +559,12 @@ class TriageSubmissionView(APIView):
         logger = logging.getLogger("triage.submission")
         
         # Get description from request (API contract field name)
-        description = request.data.get("description")
+        description = request.data.get("description") or request.data.get("symptoms")
         photo_name = request.data.get("photo_name")
+        submitted_inputs = {
+            key: _json_safe_value(request.data.get(key))
+            for key in getattr(request.data, "keys", lambda: [])()
+        }
 
         # Log triage submission attempt
         logger.info(f"Triage submission from user {request.user.id}")
@@ -506,6 +614,26 @@ class TriageSubmissionView(APIView):
             condition = ai_contract.get("condition", "Unknown")
             recommended_action = ai_contract.get("recommended_action")
             triage_status = triage_data.get("status", "waiting")
+            is_critical = triage_data.get("is_critical", False)
+            requires_immediate_attention = ai_contract.get("requires_immediate_attention", False)
+            specialist_referral_suggested = ai_contract.get("specialist_referral_suggested", False)
+            critical_keywords = ai_contract.get("critical_keywords", [])
+
+            submission_metadata = {
+                "submitted_inputs": submitted_inputs,
+                "triage_inputs": {
+                    "description": description,
+                    "photo_name": photo_name,
+                    "age": request.data.get("age"),
+                    "gender": request.data.get("gender"),
+                    "blood_type": request.data.get("blood_type"),
+                },
+                "ai_snapshot": {
+                    "triage_result": triage_data,
+                    "ai_contract": ai_contract,
+                    "source": triage_result.get("data", {}).get("source", "GEMINI_AI"),
+                },
+            }
 
             # Save to database (Member 7's model) with enriched AI fields
             submission = PatientSubmission.objects.create(
@@ -515,13 +643,18 @@ class TriageSubmissionView(APIView):
                 priority=priority,
                 urgency_score=urgency_score,
                 condition=condition,
+                is_critical=is_critical,
+                requires_immediate_attention=requires_immediate_attention,
+                specialist_referral_suggested=specialist_referral_suggested,
+                critical_keywords=critical_keywords,
                 status=triage_status,
                 category=ai_contract.get("category"),
                 explanation=ai_contract.get("explanation", []),
                 reason=ai_contract.get("reason"),
                 recommended_action=ai_contract.get("recommended_action"),
                 confidence=ai_contract.get("confidence"),
-                source=triage_result.get("data", {}).get("source", "GEMINI_AI")
+                source=triage_result.get("data", {}).get("source", "GEMINI_AI"),
+                metadata=submission_metadata,
             )
 
             # Broadcast WebSocket event (Member 8) - using correct function

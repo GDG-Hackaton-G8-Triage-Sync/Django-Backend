@@ -17,6 +17,7 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
     """
     description = serializers.CharField(source="symptoms")
     created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S.%fZ')
+    metadata = serializers.JSONField(read_only=True)
     
     class Meta:
         model = PatientSubmission
@@ -29,6 +30,7 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
             "condition",
             "status",
             "photo_name",
+            "metadata",
             "created_at"
         )
 
