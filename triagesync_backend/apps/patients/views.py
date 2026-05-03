@@ -2,12 +2,14 @@
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from django.core.exceptions import ValidationError
 
 from triagesync_backend.apps.authentication.permissions import IsPatient
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, not_found_response
 from .models import Patient, PatientSubmission
 from .serializers import PatientSubmissionSerializer
+from .utils import validate_profile_photo
 
 import logging
 
@@ -54,9 +56,13 @@ class PatientProfileView(APIView):
         """Update authenticated patient's profile."""
         patient = self.get_or_create_patient(request.user)
         
+        # Track if we need to save at the end
+        needs_save = False
+        
         # Update allowed fields
         if 'name' in request.data:
             patient.name = request.data['name']
+            needs_save = True
         if 'date_of_birth' in request.data:
             # Handle date_of_birth - can be string or date object
             dob = request.data['date_of_birth']
@@ -73,21 +79,49 @@ class PatientProfileView(APIView):
                     patient.date_of_birth = dob
             else:
                 patient.date_of_birth = None
+            needs_save = True
         if 'contact_info' in request.data:
             patient.contact_info = request.data['contact_info']
+            needs_save = True
 
         # Handle optional profile photo upload (multipart/form-data)
         if 'profile_photo' in request.FILES:
             uploaded = request.FILES['profile_photo']
+            
+            # Validate the uploaded photo
+            try:
+                validate_profile_photo(uploaded)
+            except ValidationError as e:
+                return Response({
+                    "error": str(e.message) if hasattr(e, 'message') else str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             patient.profile_photo = uploaded
             patient.profile_photo_name = getattr(uploaded, 'name', None)
+            needs_save = True
 
         # Allow clients to remove profile photo by sending explicit null
         if request.data.get('remove_profile_photo') in [True, 'true', '1', 1]:
-            patient.profile_photo = None
-            patient.profile_photo_name = None
-        
-        patient.save()
+            logger.info(f"Removing profile photo for patient {patient.id}, current photo: {patient.profile_photo}")
+            # Delete the file manually before clearing the field
+            if patient.profile_photo:
+                try:
+                    patient.profile_photo.delete(save=False)
+                    logger.info(f"Deleted file: {patient.profile_photo.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete profile photo file: {e}")
+            # Use update() to bypass any caching issues
+            Patient.objects.filter(pk=patient.pk).update(
+                profile_photo='',
+                profile_photo_name=None
+            )
+            # Refresh the instance to reflect the changes
+            patient.refresh_from_db()
+            logger.info(f"After update, profile_photo: {patient.profile_photo}")
+        elif needs_save:
+            # Only save if we haven't already saved
+            patient.save()
+            
         logger.info(f"Updated patient profile {patient.id}")
         
         return Response({

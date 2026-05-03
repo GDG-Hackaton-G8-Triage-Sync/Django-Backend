@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import TriageAIView, TriageEvaluateView, TriagePDFExtractView, TriageSubmissionView
+from .views import TriageAIView, TriageEvaluateView, TriageSubmissionView
 from triagesync_backend.apps.patients.clinical_views import (
     ClinicalVerificationView,
     StaffNoteView,
@@ -11,9 +11,8 @@ urlpatterns = [
     # Main triage submission endpoint (API contract)
     path("", TriageSubmissionView.as_view(), name='triage-submit'),
     
-    # Additional AI endpoints
+    # Combined AI triage endpoint
     path('ai/', TriageAIView.as_view(), name='triage-ai'),
-    path('pdf-extract/', TriagePDFExtractView.as_view(), name='triage-pdf-extract'),
     path("evaluate/", TriageEvaluateView.as_view(), name='triage-evaluate'),
     
     # Clinical Workflow (Staff only)

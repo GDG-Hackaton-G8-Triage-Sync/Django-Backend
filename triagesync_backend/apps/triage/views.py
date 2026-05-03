@@ -1,5 +1,7 @@
 import re as _re
 import json
+import uuid
+from django.core.files.storage import default_storage
 
 # New AI-based triage endpoint
 from .services.ai_service import get_triage_recommendation
@@ -126,7 +128,25 @@ class TriageAIView(APIView):
         warning = None
         error = getattr(request, "_triage_error", None)
         data = request.data
-        symptoms = data.get("symptoms")
+        symptoms = data.get("prompt") or data.get("symptoms") or data.get("description")
+        pdf_file = request.FILES.get("file")
+        image_file = request.FILES.get("image") or request.FILES.get("photo")
+        image_name = getattr(image_file, "name", None)
+        image_url = None
+        # Persist the uploaded triage image to storage so staff can view it later.
+        if image_file:
+            try:
+                unique_name = f"triage_attachments/{uuid.uuid4().hex}_{getattr(image_file, 'name', 'upload') }"
+                saved_name = default_storage.save(unique_name, image_file)
+                try:
+                    image_url = default_storage.url(saved_name)
+                except Exception:
+                    # If the storage backend doesn't provide a URL, fall back to the saved path
+                    image_url = saved_name
+            except Exception as exc:
+                logger = logging.getLogger("triage.storage")
+                logger.warning("Failed to save triage image: %s", exc)
+                image_url = None
         age = data.get("age")
         gender = data.get("gender")
         blood_type = data.get("blood_type")
@@ -228,11 +248,11 @@ class TriageAIView(APIView):
                 "error": "Symptoms too long.",
                 "message": f"Please limit your input to {MAX_INPUT_LENGTH} characters for best results."
             }, status=status.HTTP_400_BAD_REQUEST)
-
-        if not is_relevant(symptoms):
+        # If the request has neither a symptom prompt nor an attached PDF, require a symptoms prompt.
+        if not symptoms and not pdf_file:
             return Response({
-                "error": "Input not relevant.",
-                "message": "Please provide symptoms or information related to a medical triage situation."
+                "error": "Missing symptoms prompt.",
+                "message": "Please provide a brief description of your current feeling or symptoms."
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -242,28 +262,85 @@ class TriageAIView(APIView):
             logger.warning("TriageAIView: demographics before call: age=%s gender=%s blood_type=%s", age, gender, blood_type)
             logger.warning("TriageAIView: patient_context=%s", patient_context)
 
-            try:
-                result = get_triage_recommendation(
-                    symptoms,
-                    age=age,
-                    gender=gender,
-                    blood_type=blood_type,
-                    patient_context=patient_context,
-                )
-            except TypeError as exc:
-                # Backwards-compatibility: try progressively simpler signatures.
-                msg = str(exc)
-                # If only `patient_context` isn't accepted, try keeping blood_type.
-                if "patient_context" in msg:
-                    try:
-                        result = get_triage_recommendation(symptoms, age=age, gender=gender, blood_type=blood_type)
-                    except TypeError:
+            if pdf_file:
+                pdf_serializer = PDFUploadSerializer(data={"file": pdf_file})
+                if not pdf_serializer.is_valid():
+                    return Response(pdf_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+                try:
+                    reader = PdfReader(pdf_serializer.validated_data["file"])
+                    pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                except Exception as exc:
+                    return Response({
+                        "error": "PDF extraction failed.",
+                        "message": "Could not extract text from the uploaded PDF.",
+                        "details": str(exc),
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                if not pdf_text or not pdf_text.strip():
+                    return Response({
+                        "error": "No text extracted.",
+                        "message": "No extractable text found in the PDF. Please upload a PDF with selectable text."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # If the user did not supply a text prompt, use the PDF content to decide whether
+                # we can proceed. If both are absent or PDF content isn't medically relevant,
+                # ask the user to provide a brief symptom description.
+                if not symptoms:
+                    if not is_relevant(pdf_text):
+                        return Response({
+                            "error": "Missing symptoms prompt.",
+                            "message": "Please provide a brief description of your current feeling or symptoms."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                combined_text = f"""PATIENT TEXT PROMPT:
+{symptoms}
+
+SUPPLEMENTARY PDF CONTENT:
+{pdf_text}"""
+
+                prompt = build_pdf_triage_prompt(combined_text, age=age, gender=gender, blood_type=blood_type)
+                try:
+                    ai_response = call_gemini_api(prompt, user_description="Combined prompt + PDF triage")
+                    result = json.loads(ai_response)
+                except Exception as exc:
+                    return Response({
+                        "error": "AI service unavailable.",
+                        "message": "We are unable to process your request at this time. Please try again later.",
+                        "details": str(exc)
+                    }, status=status.HTTP_502_BAD_GATEWAY)
+
+                result = normalize_ai_response(result)
+            else:
+                # If we have a textual symptoms prompt, validate relevance.
+                if not is_relevant(symptoms):
+                    return Response({
+                        "error": "Input not relevant.",
+                        "message": "Please provide symptoms or information related to a medical triage situation."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                try:
+                    result = get_triage_recommendation(
+                        symptoms,
+                        age=age,
+                        gender=gender,
+                        blood_type=blood_type,
+                        patient_context=patient_context,
+                    )
+                except TypeError as exc:
+                    # Backwards-compatibility: try progressively simpler signatures.
+                    msg = str(exc)
+                    # If only `patient_context` isn't accepted, try keeping blood_type.
+                    if "patient_context" in msg:
+                        try:
+                            result = get_triage_recommendation(symptoms, age=age, gender=gender, blood_type=blood_type)
+                        except TypeError:
+                            result = get_triage_recommendation(symptoms, age=age, gender=gender)
+                    elif "blood_type" in msg or "unexpected keyword argument" in msg:
+                        # Older implementations may not accept blood_type; fall back without it.
                         result = get_triage_recommendation(symptoms, age=age, gender=gender)
-                elif "blood_type" in msg or "unexpected keyword argument" in msg:
-                    # Older implementations may not accept blood_type; fall back without it.
-                    result = get_triage_recommendation(symptoms, age=age, gender=gender)
-                else:
-                    raise
+                    else:
+                        raise
         except Exception as e:
             return Response({
                 "error": "AI service unavailable.",
@@ -289,6 +366,12 @@ class TriageAIView(APIView):
         if serializer.is_valid():
             response_data = dict(serializer.data)
             response_data["source"] = "ai"
+            if image_name:
+                response_data["image_name"] = image_name
+            if image_url:
+                response_data["image_url"] = image_url
+            if pdf_file:
+                response_data["pdf_name"] = getattr(pdf_file, "name", None)
             if warnings:
                 response_data["warning"] = warnings
 
@@ -306,6 +389,11 @@ class TriageAIView(APIView):
                         "age": age,
                         "gender": gender,
                         "blood_type": blood_type,
+                    }
+                    ,"attachments": {
+                        "image_name": image_name,
+                        "image_url": image_url,
+                        "pdf_name": getattr(pdf_file, "name", None) if pdf_file else None,
                     }
                 },
             )

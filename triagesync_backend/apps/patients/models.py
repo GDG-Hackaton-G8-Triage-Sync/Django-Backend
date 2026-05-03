@@ -23,7 +23,7 @@ class Patient(models.Model):
     current_medications = models.TextField(blank=True, null=True)
     bad_habits = models.TextField(blank=True, null=True)
     # Optional profile photo (migrated from triage submissions)
-    profile_photo = models.FileField(upload_to="profile_photos/", null=True, blank=True)
+    profile_photo = models.ImageField(upload_to="profile_photos/", null=True, blank=True)
     profile_photo_name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
@@ -42,7 +42,7 @@ class PatientSubmission(models.Model):
     # INPUT
     symptoms = models.TextField()
     photo_name = models.CharField(max_length=255, null=True, blank=True)
-    photo = models.FileField(upload_to="triage_photos/", null=True, blank=True)
+    photo = models.ImageField(upload_to="triage_photos/", null=True, blank=True)
 
     # TRIAGE OUTPUT
     priority = models.IntegerField(null=True, blank=True)
