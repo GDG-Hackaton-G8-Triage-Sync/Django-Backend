@@ -12,7 +12,7 @@ urlpatterns = [
     path('users/<int:user_id>/suspend/', AdminUserSuspendView.as_view(), name='admin-user-suspend'),
     path('audit-logs/', AuditLogListView.as_view(), name='admin-audit-logs'),
     path('config/sla/', SystemConfigView.as_view(), name='admin-config'),
-    path('reports/summary/', AdminReportExportView.as_view(), name='admin-report-summary'),
+    path('reports/export/', AdminReportExportView.as_view(), name='admin-report-export'),
     path('patient/<int:submission_id>/', AdminSubmissionDeleteView.as_view(), name='admin-submission-delete'),
 ]
 

@@ -52,7 +52,7 @@ class AdminPortalTests(TestCase):
 
     def test_system_config_update(self):
         url = reverse('admin-config')
-        response = self.client.patch(url, {'key': 'SLA_CRITICAL_MINS', 'value': 5})
+        response = self.client.patch(url, {'key': 'SLA_CRITICAL_MINS', 'value': 5}, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         config = SystemConfig.objects.get(key='SLA_CRITICAL_MINS')

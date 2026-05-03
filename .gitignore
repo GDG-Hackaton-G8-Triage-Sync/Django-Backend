@@ -305,3 +305,6 @@ reports/UNDERUTILIZED_FEATURES_STATUS.md
 force_drop_test_db.py
 triagesync_backend/apps/authentication/tests.py
 profile_photos/avatar.png
+fix_systemconfig.py
+fix_test.py
+triagesync_backend/apps/api_admin/tests.py
