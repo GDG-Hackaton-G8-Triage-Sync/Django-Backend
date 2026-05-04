@@ -6,7 +6,10 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from triagesync_backend.apps.patients.models import PatientSubmission
 from triagesync_backend.apps.notifications.services.notification_service import NotificationService
-from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_status_changed
+from triagesync_backend.apps.realtime.services.broadcast_service import (
+    broadcast_status_changed,
+    broadcast_queue_snapshot,
+)
 
 User = get_user_model()
 logger = logging.getLogger("patients.service")
@@ -44,6 +47,12 @@ class PatientService:
             
             # Broadcast real-time status change
             broadcast_status_changed(submission.id, new_status)
+            # Update full queue snapshot for patient and staff
+            try:
+                broadcast_queue_snapshot(submission.id)
+            except Exception:
+                # Best-effort only; do not fail the status update
+                logger.debug(f"Failed to broadcast queue snapshot for submission {submission.id}")
             
             # Send notifications
             cls._send_status_change_notifications(submission, old_status, new_status, staff_user)

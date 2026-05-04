@@ -74,12 +74,14 @@ python manage.py collectstatic --noinput
 - `POST /api/v1/auth/login/` — Login, returns access + refresh tokens.
 - `POST /api/v1/auth/refresh/` — Refresh access token.
 - `GET|PATCH /api/v1/profile/` — User profile operations.
+- `GET /api/v1/patients/current/` — Patient current session + queue payload.
+- `GET /api/v1/patients/queue/` — Patient queue snapshot (position, steps, wait range).
 
 - `POST /api/v1/triage/` — Submit triage (authenticated patients). The server will run AI analysis and return a structured triage response.
-- `POST /api/v1/triage/ai/` — Standalone AI triage analysis (can be unauthenticated; patient fields optional if authenticated).
+- `POST /api/v1/triage/ai/` — Combined AI triage analysis (can be unauthenticated; accepts prompt + optional PDF + optional image).
 - `POST /api/v1/triage/pdf-extract/` — Upload PDF for symptom extraction (multipart/form-data).
 
-Triage submissions may include a supporting `photo` upload and optional `photo_name`. Uploaded files are stored under `triage_photos/`, and the backend keeps `recommended_action` with the submission so staff views and notifications can show the AI's suggested next step.
+The AI endpoint accepts an optional `image` upload. If present, it is stored under `triage_attachments/` and returned as `image_url`. The image is not sent to the AI model. The `POST /api/v1/triage/` endpoint does not accept photo uploads; profile photos live on `/api/v1/patients/profile/`.
 
 - Staff endpoints under `/api/v1/dashboard/staff/` include queue listing, priority/status updates, and verification endpoints.
 - Admin endpoints under `/api/v1/admin/` provide analytics and system overview.
@@ -100,6 +102,7 @@ Triage submissions may include a supporting `photo` upload and optional `photo_n
   - `Authorization: Bearer <JWT_ACCESS_TOKEN>` header.
 - Only authorized roles should open staff-facing channels.
 - Server broadcasts events for `patient_created`, `priority_update`, `critical_alert`, and `status_changed`.
+- Additional events: `wait_time_update` and `queue_snapshot` (patient queue payload).
 
 ---
 
@@ -122,6 +125,10 @@ Normalization:
 Conflict handling:
 
 - If no explicit demographic values are provided and extracted values conflict with profile values, the API can return `409 demographic_conflict` and request clarification.
+
+Files:
+- Optional `file` (PDF) and `image` (stored for staff viewing only).
+- Response includes `image_name`, `image_url`, and `pdf_name` when provided.
 
 ---
 
