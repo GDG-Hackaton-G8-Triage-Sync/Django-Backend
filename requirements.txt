@@ -17,6 +17,7 @@ daphne==4.2.1
 dj-database-url==3.1.2
 Django==5.2.13
 django-cors-headers==4.9.0
+django-redis==6.0.0
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
 google-ai-generativelanguage==0.6.15
