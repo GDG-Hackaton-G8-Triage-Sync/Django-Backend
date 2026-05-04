@@ -11,6 +11,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     # Required for patient registration
     gender = serializers.CharField(max_length=50, required=False, allow_blank=False, allow_null=False)
     blood_type = serializers.CharField(max_length=20, required=False, allow_blank=False, allow_null=False)
+    role = serializers.ChoiceField(choices=User.Roles.choices, required=True)
     password2 = serializers.CharField(write_only=True, required=True)
     health_history = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     allergies = serializers.CharField(required=False, allow_blank=True, allow_null=True)

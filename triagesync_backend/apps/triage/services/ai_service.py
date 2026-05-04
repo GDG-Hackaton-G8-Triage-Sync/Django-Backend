@@ -448,10 +448,10 @@ def infer_priority(symptoms: str) -> dict:
                 "condition": condition,
             }
 
-    # Default — low urgency
+    # Default — neutral/medium urgency for unknown complaints
     return {
-        "priority": 5,
-        "urgency_score": 15,
+        "priority": 3,
+        "urgency_score": 50,
         "condition": "General Complaint",
     }
 
