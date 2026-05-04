@@ -34,7 +34,7 @@ class PatientSubmissionAdmin(admin.ModelAdmin):
             "classes": ("extrapretty",)
         }),
         ("Clinical Details", {
-            "fields": ("symptoms", "photo", "photo_name")
+            "fields": ("symptoms",)
         }),
         ("Routing Meta", {
             "fields": ("requires_immediate_attention", "specialist_referral_suggested", "critical_keywords"),

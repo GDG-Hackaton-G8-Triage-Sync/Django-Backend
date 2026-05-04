@@ -1,9 +1,11 @@
-﻿from rest_framework.views import APIView
+from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 from triagesync_backend.apps.authentication.permissions import IsPatient
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
@@ -12,6 +14,8 @@ from .models import Patient, PatientSubmission
 from .serializers import PatientSubmissionSerializer
 from .utils import validate_profile_photo
 from triagesync_backend.apps.dashboard.services.wait_time_service import calculate_wait_time, get_sla_status
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
+from triagesync_backend.apps.authentication.serializers import GenericProfileSerializer
 
 import logging
 
@@ -176,15 +180,10 @@ def _build_patient_queue_payload(patient):
     }
 
 
-class PatientProfileView(APIView):
-    """
-    Patient profile management endpoint.
-    
-    GET /api/v1/patients/profile/ - Get patient profile
-    PATCH /api/v1/patients/profile/ - Update patient profile
-    """
+class PatientProfileView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
-    
+    serializer_class = GenericProfileSerializer
+
     def get_or_create_patient(self, user):
         """Get or create patient profile for user."""
         try:
@@ -212,6 +211,11 @@ class PatientProfileView(APIView):
             "profile_photo_name": getattr(patient, "profile_photo_name", None),
         }, status=status.HTTP_200_OK)
     
+    @extend_schema(
+        request=GenericProfileSerializer,
+        responses={200: GenericProfileSerializer, 400: ErrorResponseSerializer},
+        description="Update authenticated patient's profile."
+    )
     def patch(self, request):
         """Update authenticated patient's profile."""
         patient = self.get_or_create_patient(request.user)
@@ -295,51 +299,26 @@ class PatientProfileView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class PatientHistoryView(APIView):
-    """
-    Patient submission history endpoint with pagination.
-    
-    GET /api/v1/patients/history/ - Get all patient's triage submissions
-    Query params: page, page_size (default 20, max 100)
-    """
+class PatientHistoryView(ListAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     pagination_class = StandardResultsSetPagination
-    
-    def get(self, request):
-        """Get authenticated patient's submission history with pagination."""
+    serializer_class = PatientSubmissionSerializer
+
+    def get_queryset(self):
         try:
-            patient = request.user.patient_profile
+            patient = self.request.user.patient_profile
         except Patient.DoesNotExist:
-            # No patient profile means no submissions
-            return Response({
-                "count": 0,
-                "next": None,
-                "previous": None,
-                "results": []
-            }, status=status.HTTP_200_OK)
+            return PatientSubmission.objects.none()
         
-        # Get all submissions for this patient, ordered by most recent first
-        submissions = PatientSubmission.objects.filter(
-            patient=patient
-        ).order_by('-created_at')
-        
-        # Apply pagination
-        paginator = self.pagination_class()
-        paginated_submissions = paginator.paginate_queryset(submissions, request)
-        
-        # Use PatientSubmissionSerializer for patient-facing history
-        serializer = PatientSubmissionSerializer(paginated_submissions, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return PatientSubmission.objects.filter(patient=patient).order_by('-created_at')
 
 
-class PatientSubmissionDetailView(APIView):
-    """
-    Patient submission detail endpoint.
-    
-    GET /api/v1/patients/submissions/{id}/ - Get specific submission details
-    """
+class PatientSubmissionDetailView(GenericAPIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = PatientSubmissionSerializer
+    queryset = PatientSubmission.objects.all()
+    lookup_url_kwarg = 'submission_id'
+
     def get(self, request, submission_id):
         """Get specific submission details."""
         try:
@@ -367,12 +346,7 @@ class PatientSubmissionDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class PatientCurrentSessionView(APIView):
-    """
-    Patient current/active session endpoint.
-    
-    GET /api/v1/patients/current/ - Get patient's most recent active submission
-    """
+class PatientCurrentSessionView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def get(self, request):
@@ -389,7 +363,7 @@ class PatientCurrentSessionView(APIView):
         return Response(payload, status=status.HTTP_200_OK)
 
 
-class PatientQueueView(APIView):
+class PatientQueueView(GenericAPIView):
     """
     Patient queue endpoint.
 
@@ -423,19 +397,7 @@ class PatientQueueView(APIView):
 
 
 
-class TriageSubmissionsHistoryView(APIView):
-    """
-    Triage submissions history retrieval endpoint.
-    
-    GET /api/v1/triage-submissions/
-    - Patients: Returns only their own submissions
-    - Staff: Returns all submissions or filtered by email query param
-    
-    Query params:
-        - email (optional): Filter by patient email (staff only)
-    
-    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7
-    """
+class TriageSubmissionsHistoryView(ListAPIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
@@ -473,14 +435,7 @@ class TriageSubmissionsHistoryView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class ProfilePhotoUploadView(APIView):
-    """
-    Profile photo upload endpoint.
-    
-    POST /api/v1/patients/profile/photo/ - Upload profile photo
-    
-    Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 9.1, 9.2, 9.3
-    """
+class ProfilePhotoUploadView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def post(self, request):
@@ -532,14 +487,7 @@ class ProfilePhotoUploadView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class ProfilePhotoDeleteView(APIView):
-    """
-    Profile photo deletion endpoint.
-    
-    DELETE /api/v1/patients/profile/photo/ - Delete profile photo
-    
-    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 9.4
-    """
+class ProfilePhotoDeleteView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def delete(self, request):

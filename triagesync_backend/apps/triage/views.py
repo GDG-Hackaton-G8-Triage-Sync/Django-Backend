@@ -5,15 +5,15 @@ from django.core.files.storage import default_storage
 
 # New AI-based triage endpoint
 from .services.ai_service import get_triage_recommendation
-from .serializers import TriageAIResponseSerializer
-from .serializers import PDFUploadSerializer
+from .serializers import TriageAIResponseSerializer, PDFUploadSerializer, TriageSubmissionSerializer, TriageInputSerializer, TriageAIRequestSerializer
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
 from rest_framework import status
-
 from rest_framework.response import Response
-
 from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 import logging
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.core.exceptions import ValidationError
 
 from .serializers import TriageAIResponseSerializer
@@ -122,9 +122,15 @@ def is_relevant(text):
     return any(_re.search(r"\b" + _re.escape(kw) + r"\b", text_lower) for kw in keywords)
 
 
-class TriageAIView(APIView):
+class TriageAIView(GenericAPIView):
     permission_classes = [AllowAny]
-
+    serializer_class = TriageAIResponseSerializer
+    
+    @extend_schema(
+        request=TriageAIRequestSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Analyze symptoms and optional attachments (PDF/Image) using AI to provide triage recommendations."
+    )
     def post(self, request):
         from .services.demographic_extractor import extract_demographics_from_text, detect_conflicts
 
@@ -413,9 +419,15 @@ SUPPLEMENTARY PDF CONTENT:
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class TriagePDFExtractView(APIView):
+class TriagePDFExtractView(GenericAPIView):
     permission_classes = [AllowAny]
+    serializer_class = PDFUploadSerializer
 
+    @extend_schema(
+        request=PDFUploadSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Extract symptoms from a PDF and compare with user input to provide triage recommendation."
+    )
     def post(self, request):
         import logging
         from .services.demographic_extractor import extract_demographics_from_text, detect_conflicts
@@ -610,9 +622,15 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class TriageEvaluateView(APIView):
+class TriageEvaluateView(GenericAPIView):
     permission_classes = [AllowAny]
+    serializer_class = TriageInputSerializer
 
+    @extend_schema(
+        request=TriageInputSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Simple evaluation of symptoms using the rule-based or AI engine."
+    )
     def post(self, request):
         symptoms = request.data.get("symptoms", "")
         if not symptoms:
@@ -640,15 +658,9 @@ class TriageEvaluateView(APIView):
 # POST /api/v1/triage/
 # ============================================================================
 
-class TriageSubmissionView(APIView):
-    """
-    Main triage submission endpoint per API contract.
-    
-    POST /api/v1/triage/
-    Request: {"description": "Chest pain..."}
-    Response: Direct TriageItem shape (no envelope)
-    """
+class TriageSubmissionView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
+    serializer_class = TriageSubmissionSerializer
 
     def post(self, request):
         logger = logging.getLogger("triage.submission")

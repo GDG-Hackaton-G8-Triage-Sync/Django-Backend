@@ -5,6 +5,7 @@ from django.contrib.auth import authenticate
 class RegisterSerializer(serializers.ModelSerializer):
     # Public-facing name field (mapped to User.username)
     name = serializers.CharField(max_length=255, required=True)
+    email = serializers.EmailField(required=True)
     # Required demographic field
     age = serializers.IntegerField(min_value=0, max_value=150, required=True)
     # Required for patient registration
@@ -18,11 +19,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        # include username because it's the model field; API uses `name` instead
-        fields = ['username', 'email', 'password', 'password2', 'role', 'name', 'age', 'gender', 'blood_type', 'health_history', 'allergies', 'current_medications', 'bad_habits']
+        # include name because it maps to username; exclude username from public API
+        fields = ['email', 'password', 'password2', 'role', 'name', 'age', 'gender', 'blood_type', 'health_history', 'allergies', 'current_medications', 'bad_habits']
         extra_kwargs = {
             'password': {'write_only': True},
-            'username': {'required': False}
         }
 
     _BLOOD_TYPE_MAP = {
@@ -136,3 +136,15 @@ class GenericProfileSerializer(serializers.Serializer):
     bad_habits = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     profile_photo = serializers.FileField(required=False, allow_null=True)
     remove_profile_photo = serializers.BooleanField(required=False)
+
+
+class AuthResponseSerializer(serializers.Serializer):
+    access_token = serializers.CharField()
+    refresh_token = serializers.CharField()
+    role = serializers.CharField()
+    user_id = serializers.IntegerField()
+    name = serializers.CharField()
+    email = serializers.EmailField()
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField(help_text="The refresh token to blacklist.")

@@ -3,11 +3,21 @@ from rest_framework import serializers
 from triagesync_backend.apps.patients.models import PatientSubmission
 
 
-class TriageUserInputSerializer(serializers.Serializer):
-    """User input serializer: expects symptoms, age, gender as separate fields"""
-    symptoms = serializers.CharField(required=True)
+class TriageInputSerializer(serializers.Serializer):
+    """Simple serializer for triage evaluation (text only)"""
+    symptoms = serializers.CharField(required=True, max_length=500)
+
+
+class TriageAIRequestSerializer(serializers.Serializer):
+    """Combined serializer for AI triage (text + optional files)"""
+    symptoms = serializers.CharField(required=False, allow_blank=True, help_text="Patient symptoms description")
+    prompt = serializers.CharField(required=False, allow_blank=True, help_text="Alternative to symptoms field")
     age = serializers.IntegerField(required=False, allow_null=True)
     gender = serializers.CharField(required=False, allow_null=True)
+    blood_type = serializers.CharField(required=False, allow_null=True)
+    file = serializers.FileField(required=False, allow_null=True, help_text="Supplementary PDF document")
+    image = serializers.ImageField(required=False, allow_null=True, help_text="Photo of injury/symptom")
+    photo = serializers.ImageField(required=False, allow_null=True, help_text="Alternative to image field")
 
 
 class TriageSubmissionSerializer(serializers.ModelSerializer):
@@ -29,10 +39,10 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
             "urgency_score", 
             "condition",
             "status",
-            "photo_name",
             "metadata",
             "created_at"
         )
+        read_only_fields = ("id", "priority", "urgency_score", "condition", "status", "metadata", "created_at")
 
 
 class TriageAIResponseSerializer(serializers.Serializer):

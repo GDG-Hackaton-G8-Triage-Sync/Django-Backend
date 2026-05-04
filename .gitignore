@@ -3,6 +3,8 @@
 .env.*
 .envrc
 .DS_Store
+triagesync_backend/staticfiles/
+
 
 # Test output, coverage, and cache
 .pytest_cache/

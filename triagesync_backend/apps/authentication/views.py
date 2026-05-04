@@ -1,4 +1,5 @@
-﻿from rest_framework.views import APIView
+from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -6,16 +7,23 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.db import transaction
 
-from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer
+from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer, AuthResponseSerializer, LogoutSerializer
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
 from .services.auth_service import get_tokens_for_user
 from triagesync_backend.apps.core.response import error_response
 from triagesync_backend.apps.patients.models import Patient
 from triagesync_backend.apps.notifications.services.notification_service import NotificationService
+from drf_spectacular.utils import extend_schema
 
 
-class RegisterView(APIView):
+class RegisterView(GenericAPIView):
     permission_classes = [AllowAny]
-    
+    serializer_class = RegisterSerializer
+
+    @extend_schema(
+        responses={200: AuthResponseSerializer, 400: ErrorResponseSerializer},
+        description="Return API information for GET requests."
+    )
     def get(self, request):
         """Return API information for GET requests."""
         return Response({
@@ -41,6 +49,11 @@ class RegisterView(APIView):
             }
         }, status=status.HTTP_200_OK)
     
+    @extend_schema(
+        request=RegisterSerializer,
+        responses={201: AuthResponseSerializer, 400: ErrorResponseSerializer},
+        description="Register a new user account (Patient or Staff)."
+    )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
@@ -104,9 +117,15 @@ class RegisterView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
-class LoginView(APIView):
+class LoginView(GenericAPIView):
     permission_classes = [AllowAny]
-    
+    serializer_class = LoginSerializer
+
+    @extend_schema(
+        request=LoginSerializer,
+        responses={200: AuthResponseSerializer, 401: ErrorResponseSerializer, 500: ErrorResponseSerializer},
+        description="Authenticate user and return JWT tokens."
+    )
     def post(self, request):
         try:
             serializer = LoginSerializer(data=request.data, context={"request": request})
@@ -162,8 +181,16 @@ class RefreshTokenView(TokenRefreshView):
             )
         
         try:
-            # Call parent's post method to leverage simplejwt's token refresh logic
-            return super().post(request, *args, **kwargs)
+            response = super().post(request, *args, **kwargs)
+            if response.status_code == 200:
+                data = response.data
+                # Rename keys to match Login/Register responses
+                new_data = {
+                    "access_token": data.get("access"),
+                    "refresh_token": data.get("refresh") or request.data.get("refresh"),
+                }
+                response.data = new_data
+            return response
         except InvalidToken as e:
             # Handle invalid or expired refresh tokens
             return error_response(
@@ -190,15 +217,12 @@ class RefreshTokenView(TokenRefreshView):
             )
 
 
-class LogoutView(APIView):
+class LogoutView(GenericAPIView):
     """
-    POST /api/v1/auth/logout/
-    Clear session data on logout (e.g., filter preferences).
-    
-    Note: This is a JWT-based system, so token invalidation happens client-side.
-    This endpoint only clears server-side session data.
+    Logout view to blacklist refresh tokens.
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
     
     def post(self, request):
         """Clear all session data on logout."""
@@ -218,22 +242,13 @@ class LogoutView(APIView):
             )
 
 
-class GenericProfileView(APIView):
-    """
-    Generic profile management endpoint for all user roles.
-    
-    GET /api/v1/profile/
-    - For patients: Returns Patient model fields
-    - For staff: Returns User model fields
-    
-    PATCH /api/v1/profile/
-    - For patients: Updates Patient model fields
-    - For staff: Updates User model fields (name, email only)
-    
-    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 9.1, 9.4, 2.1, 2.3, 2.5
-    """
+class GenericProfileView(GenericAPIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = GenericProfileSerializer
+
+    @extend_schema(
+        description="Retrieve user profile based on role."
+    )
     def get(self, request):
         """Retrieve user profile based on role."""
         user = request.user
@@ -283,6 +298,11 @@ class GenericProfileView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    @extend_schema(
+        request=GenericProfileSerializer,
+        responses={200: GenericProfileSerializer, 400: ErrorResponseSerializer},
+        description="Update user profile. Supports partial updates and profile photo upload (multipart/form-data)."
+    )
     def patch(self, request):
         """Update user profile based on role."""
         serializer = GenericProfileSerializer(data=request.data)
