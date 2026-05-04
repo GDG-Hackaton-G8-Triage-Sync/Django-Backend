@@ -1,4 +1,4 @@
-﻿import os
+import os
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "triagesync_backend.apps.dashboard",
     "triagesync_backend.apps.api_admin",
     "triagesync_backend.apps.notifications",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -180,6 +181,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "triagesync_backend.apps.core.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "triagesync_backend.apps.core.exceptions.custom_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SIMPLE_JWT = {
@@ -321,6 +323,21 @@ LOGGING = {
     'root': {
         'handlers': ['console'],
         'level': 'WARNING',
+    },
+}
+
+# --- Swagger / OpenAPI Configuration ---
+SPECTACULAR_SETTINGS = {
+    "TITLE": "TriageSync API",
+    "DESCRIPTION": "API documentation for TriageSync backend",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_PATCH": True,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
     },
 }
 

@@ -3,12 +3,19 @@
 Version: 1.2.0
 Last Updated: 2026-05-02
 
-This file summarizes the public API surface, deployment notes, ASGI usage, and how the AI (Gemini) responses are consumed by the backend. It is a curated, up-to-date superset of the detailed docs in `/docs`.
+This file summarizes the public API surface, deployment notes, ASGI usage, and how the AI (Gemini) responses are consumed by the backend. 
+
+> [!TIP]
+> **Use Swagger for REST APIs:** We now have Swagger integrated! For detailed Request/Response schemas of all REST endpoints, please visit the **[Swagger UI](/api/schema/swagger-ui/)** while the server is running.
+
+This document serves as a curated, up-to-date superset of the detailed docs in `/docs` and specifically covers things that are not easily captured by Swagger (like WebSockets and AI internal logic).
 
 ---
 
 **Quick Links**
 - Main README: [README.md](README.md)
+- **API Swagger (Live):** `/api/schema/swagger-ui/` (when running locally: `http://localhost:9000/api/schema/swagger-ui/`)
+- **API Redoc (Live):** `/api/schema/redoc/`
 - Full internal docs: `/docs` folder
 
 ---
