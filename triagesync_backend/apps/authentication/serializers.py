@@ -146,5 +146,9 @@ class AuthResponseSerializer(serializers.Serializer):
     name = serializers.CharField()
     email = serializers.EmailField()
 
+class TokenRefreshResponseSerializer(serializers.Serializer):
+    access_token = serializers.CharField()
+    refresh_token = serializers.CharField(required=False)
+
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(help_text="The refresh token to blacklist.")

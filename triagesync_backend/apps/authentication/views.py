@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.db import transaction
 
-from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer, AuthResponseSerializer, LogoutSerializer
+from .serializers import RegisterSerializer, LoginSerializer, GenericProfileSerializer, AuthResponseSerializer, LogoutSerializer, TokenRefreshResponseSerializer
 from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
 from .services.auth_service import get_tokens_for_user
 from triagesync_backend.apps.core.response import error_response
@@ -166,6 +166,10 @@ class RefreshTokenView(TokenRefreshView):
     """
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        responses={200: TokenRefreshResponseSerializer, 401: ErrorResponseSerializer},
+        description="Refresh access token using a valid refresh token."
+    )
     def post(self, request, *args, **kwargs):
         """
         Override post method to wrap simplejwt's token refresh logic

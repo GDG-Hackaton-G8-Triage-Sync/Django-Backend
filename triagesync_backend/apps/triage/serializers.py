@@ -26,7 +26,7 @@ class TriageSubmissionSerializer(serializers.ModelSerializer):
     Maps model field "symptoms" to API field "description"
     """
     description = serializers.CharField(source="symptoms")
-    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S.%fZ')
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%S.%fZ', read_only=True)
     metadata = serializers.JSONField(read_only=True)
     
     class Meta:
