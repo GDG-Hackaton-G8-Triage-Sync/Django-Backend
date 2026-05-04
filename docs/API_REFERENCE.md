@@ -14,15 +14,25 @@ This document provides a comprehensive list of the REST API endpoints available 
 ### 2. Standalone AI Analysis
 `POST /api/v1/triage/ai/`
 - **Purpose**: Get a triage recommendation without creating a permanent record.
-- **Body**: `{"symptoms": "...", "age": 45, "gender": "male"}`
-- **Response**: AI assessment including priority, condition, and reasoning.
+- **Body**: `{"prompt": "...", "age": 45, "gender": "male", "blood_type": "O+"}`
+- **Files**: optional `file` (PDF) and `image` (stored for staff viewing, not sent to AI).
+- **Response**: AI assessment including priority, condition, and reasoning. When files are present, the response includes `image_name`, `image_url`, and `pdf_name`.
 
 ### 3. Personal Profile
-`GET /api/v1/profile/` | `PATCH /api/v1/profile/`
+`GET /api/v1/patients/profile/` | `PATCH /api/v1/patients/profile/`
 - **Purpose**: Manage patient demographics and health history.
 - **Fields**: `name`, `age`, `gender`, `blood_type`, `health_history`, `allergies`, `medications`, `lifestyle_habits`, `profile_photo` (file), `profile_photo_name` (string).
 
 The profile endpoints accept an optional `profile_photo` file upload and return `profile_photo_name` for display. This is the supported location for new patient photo uploads.
+
+### 4. Patient Queue
+`GET /api/v1/patients/queue/`
+- **Purpose**: Patient-facing queue snapshot (position, wait time, steps, estimated range).
+- **Response**: Queue payload with `position`, `progress_percent`, `steps`, and `estimated_wait_range`.
+
+### 5. Current Session
+`GET /api/v1/patients/current/`
+- **Purpose**: Returns the current submission plus the queue payload.
 
 ---
 

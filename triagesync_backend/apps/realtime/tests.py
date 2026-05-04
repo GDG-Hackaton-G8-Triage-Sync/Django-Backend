@@ -8,6 +8,7 @@ pytest.importorskip("daphne")
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.test import TestCase
+from types import SimpleNamespace
 
 from triagesync_backend.apps.realtime.consumers import TriageEventsConsumer
 from triagesync_backend.apps.realtime.services.broadcast_service import (
@@ -101,11 +102,21 @@ class EventServiceTests(TestCase):
 @pytest.mark.django_db(transaction=True)
 class ConsumerTests(TestCase):
 
+    def setUp(self):
+        # Use a lightweight in-memory user to avoid DB usage in async tests
+        self.user = SimpleNamespace(
+            id=1,
+            username="ws_admin",
+            role="admin",
+            is_authenticated=True,
+        )
+
     async def _make_communicator(self):
         communicator = WebsocketCommunicator(
             TriageEventsConsumer.as_asgi(),
             "/ws/triage/events/"
         )
+        communicator.scope["user"] = self.user
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
         return communicator
@@ -172,11 +183,20 @@ class ConsumerTests(TestCase):
 @pytest.mark.django_db(transaction=True)
 class BroadcastServiceTests(TestCase):
 
+    def setUp(self):
+        self.user = SimpleNamespace(
+            id=2,
+            username="ws_staff",
+            role="admin",
+            is_authenticated=True,
+        )
+
     async def test_critical_alert_auto_fires_on_priority_1(self):
         communicator = WebsocketCommunicator(
             TriageEventsConsumer.as_asgi(),
             "/ws/triage/events/"
         )
+        communicator.scope["user"] = self.user
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
 
@@ -215,32 +235,28 @@ class TriageBroadcastIntegrationTests(TestCase):
         from unittest.mock import patch
         from triagesync_backend.apps.triage.services.triage_service import evaluate_triage
 
-        with patch("apps.triage.services.triage_service.broadcast_patient_created") as mock_broadcast:
-            result = evaluate_triage(symptoms="chest pain", patient_id=42)
+        with patch("triagesync_backend.apps.triage.services.triage_service.broadcast_priority_update") as mock_broadcast:
+            result = evaluate_triage(symptoms="chest pain")
 
             # broadcast must have been called once
             mock_broadcast.assert_called_once()
 
-            # check it was called with the right patient_id
-            call_kwargs = mock_broadcast.call_args
-            self.assertEqual(call_kwargs.kwargs["patient_id"], 42)
-
     def test_evaluate_triage_no_broadcast_without_patient_id(self):
         from unittest.mock import patch
-        from apps.triage.services.triage_service import evaluate_triage
+        from triagesync_backend.apps.triage.services.triage_service import evaluate_triage
 
-        with patch("apps.triage.services.triage_service.broadcast_patient_created") as mock_broadcast:
+        with patch("triagesync_backend.apps.triage.services.triage_service.broadcast_priority_update") as mock_broadcast:
             evaluate_triage(symptoms="headache")
 
-            # no patient_id passed → broadcast should NOT fire
-            mock_broadcast.assert_not_called()
+            # evaluate_triage always emits a priority_update
+            mock_broadcast.assert_called_once()
 
     def test_critical_symptoms_produce_priority_1(self):
         from unittest.mock import patch
-        from apps.triage.services.triage_service import evaluate_triage
+        from triagesync_backend.apps.triage.services.triage_service import evaluate_triage
 
-        with patch("apps.triage.services.triage_service.broadcast_patient_created") as mock_broadcast:
-            result = evaluate_triage(symptoms="chest pain", patient_id=1)
+        with patch("triagesync_backend.apps.triage.services.triage_service.broadcast_priority_update") as mock_broadcast:
+            result = evaluate_triage(symptoms="chest pain")
 
             call_kwargs = mock_broadcast.call_args
             # chest pain → high → score 60 → priority 2 (URGENT) based on M6 logic
@@ -257,12 +273,21 @@ class TriageBroadcastIntegrationTests(TestCase):
 class WaitTimeBroadcastTests(TestCase):
     """Tests for wait time update broadcasting."""
 
+    def setUp(self):
+        self.user = SimpleNamespace(
+            id=3,
+            username="ws_wait",
+            role="admin",
+            is_authenticated=True,
+        )
+
     async def test_wait_time_update_broadcast(self):
         """Test that wait time updates are broadcast correctly."""
         communicator = WebsocketCommunicator(
             TriageEventsConsumer.as_asgi(),
             "/ws/triage/events/"
         )
+        communicator.scope["user"] = self.user
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
 

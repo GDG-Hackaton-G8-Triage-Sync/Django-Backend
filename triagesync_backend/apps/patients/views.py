@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from triagesync_backend.apps.authentication.permissions import IsPatient
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
@@ -10,10 +11,169 @@ from triagesync_backend.apps.core.response import error_response, not_found_resp
 from .models import Patient, PatientSubmission
 from .serializers import PatientSubmissionSerializer
 from .utils import validate_profile_photo
+from triagesync_backend.apps.dashboard.services.wait_time_service import calculate_wait_time, get_sla_status
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+ACTIVE_QUEUE_STATUSES = [PatientSubmission.Status.WAITING, PatientSubmission.Status.IN_PROGRESS]
+
+
+def _get_active_queue_queryset():
+    return PatientSubmission.objects.select_related(
+        "patient__user",
+        "assigned_to",
+        "verified_by_user",
+    ).filter(status__in=ACTIVE_QUEUE_STATUSES).order_by("priority", "-urgency_score", "created_at")
+
+
+def _build_queue_steps(status):
+    steps = [
+        {"key": "submitted", "label": "Submitted", "completed": True},
+        {"key": "waiting", "label": "Waiting", "completed": status in [PatientSubmission.Status.WAITING, PatientSubmission.Status.IN_PROGRESS, PatientSubmission.Status.COMPLETED]},
+        {"key": "in_review", "label": "In review", "completed": status in [PatientSubmission.Status.IN_PROGRESS, PatientSubmission.Status.COMPLETED]},
+        {"key": "being_seen", "label": "Being seen", "completed": status in [PatientSubmission.Status.IN_PROGRESS, PatientSubmission.Status.COMPLETED]},
+        {"key": "completed", "label": "Completed", "completed": status == PatientSubmission.Status.COMPLETED},
+    ]
+
+    if status == PatientSubmission.Status.WAITING:
+        current_step = "Waiting"
+        progress_percent = 30
+        status_label = "Waiting for staff review"
+    elif status == PatientSubmission.Status.IN_PROGRESS:
+        current_step = "Being seen"
+        progress_percent = 75
+        status_label = "A clinician is reviewing your case"
+    else:
+        current_step = "Completed"
+        progress_percent = 100
+        status_label = "Your case is complete"
+
+    return {
+        "current_step": current_step,
+        "progress_percent": progress_percent,
+        "status_label": status_label,
+        "steps": steps,
+    }
+
+
+def _estimate_wait_range_minutes(submission, queue_position, total_active_cases):
+    from triagesync_backend.apps.dashboard.services.wait_time_service import get_wait_time_analytics
+
+    analytics = get_wait_time_analytics()
+
+    # Prefer recent completed-case average as per-case turnover baseline; fall back to avg active wait
+    per_case_minutes = analytics.get("avg_wait_completed_24h") or analytics.get("avg_wait_active") or 20
+
+    # Base by priority bands but keep narrower bands and blend with analytics
+    base_bands = {1: (0, 8), 2: (8, 18), 3: (18, 30), 4: (30, 50), 5: (50, 90)}
+    base_min, base_max = base_bands.get(submission.priority, (15, 30))
+
+    ahead = max((queue_position or 1) - 1, 0)
+
+    # Add expected time for cases ahead using average per-case handling time
+    added_min = ahead * int(per_case_minutes * 0.7)
+    added_max = ahead * int(per_case_minutes * 1.0)
+
+    min_minutes = max(0, base_min + added_min)
+    max_minutes = base_max + added_max
+
+    # If case already in progress, reduce lower bound
+    if submission.status == PatientSubmission.Status.IN_PROGRESS:
+        min_minutes = max(0, int(min_minutes * 0.5))
+        max_minutes = max(min_minutes + 5, int(max_minutes * 0.8))
+
+    return {
+        "min_minutes": int(min_minutes),
+        "max_minutes": int(max_minutes),
+        "label": f"About {int(min_minutes)}-{int(max_minutes)} min",
+    }
+
+
+def _build_patient_queue_payload(patient):
+    active_queue = list(_get_active_queue_queryset())
+    patient_active_queue = [submission for submission in active_queue if submission.patient_id == patient.id]
+
+    current_submission = patient_active_queue[0] if patient_active_queue else PatientSubmission.objects.filter(patient=patient).order_by("-created_at").first()
+    if not current_submission:
+        return {
+            "current_submission": None,
+            "queue": {
+                "position": None,
+                "total_active_cases": len(active_queue),
+                "ahead_of_you": 0,
+                "behind_you": 0,
+                "queue_state": "idle",
+                "queue_state_label": "No active submission",
+                "last_updated": None,
+                "progress_percent": 0,
+                "steps": _build_queue_steps(PatientSubmission.Status.COMPLETED)["steps"],
+            },
+            "message": "No active queue item found",
+        }
+
+    queue_position = None
+    if current_submission.status in ACTIVE_QUEUE_STATUSES:
+        for index, submission in enumerate(active_queue, start=1):
+            if submission.id == current_submission.id:
+                queue_position = index
+                break
+
+    status_summary = _build_queue_steps(current_submission.status)
+    wait_time_minutes = calculate_wait_time(current_submission)
+    estimated_wait_range = _estimate_wait_range_minutes(current_submission, queue_position, len(active_queue))
+
+    current_submission_payload = {
+        "id": current_submission.id,
+        "symptoms": current_submission.symptoms,
+        "priority": current_submission.priority,
+        "urgency_score": current_submission.urgency_score,
+        "condition": current_submission.condition,
+        "category": current_submission.category or "General",
+        "status": current_submission.status,
+        "queue_position": queue_position,
+        "wait_time_minutes": wait_time_minutes,
+        "sla_status": get_sla_status(wait_time_minutes),
+        "estimated_wait_range": estimated_wait_range,
+        "created_at": current_submission.created_at.isoformat(),
+        "processed_at": current_submission.processed_at.isoformat() if current_submission.processed_at else None,
+    }
+
+    if queue_position is None:
+        queue_summary = {
+            "position": None,
+            "total_active_cases": len(active_queue),
+            "ahead_of_you": 0,
+            "behind_you": 0,
+            "queue_state": current_submission.status,
+            "queue_state_label": "Completed" if current_submission.status == PatientSubmission.Status.COMPLETED else "No active queue position",
+            "last_updated": current_submission.processed_at.isoformat() if current_submission.processed_at else current_submission.created_at.isoformat(),
+            "progress_percent": status_summary["progress_percent"],
+            "current_step": status_summary["current_step"],
+            "estimated_wait_range": estimated_wait_range,
+            "steps": status_summary["steps"],
+        }
+    else:
+        queue_summary = {
+            "position": queue_position,
+            "total_active_cases": len(active_queue),
+            "ahead_of_you": queue_position - 1,
+            "behind_you": max(len(active_queue) - queue_position, 0),
+            "queue_state": current_submission.status,
+            "queue_state_label": status_summary["status_label"],
+            "last_updated": current_submission.processed_at.isoformat() if current_submission.processed_at else current_submission.created_at.isoformat(),
+            "progress_percent": status_summary["progress_percent"],
+            "current_step": status_summary["current_step"],
+            "estimated_wait_range": estimated_wait_range,
+            "steps": status_summary["steps"],
+        }
+
+    return {
+        "current_submission": current_submission_payload,
+        "queue": queue_summary,
+        "message": "Active queue found" if queue_position is not None else "Latest submission loaded",
+    }
 
 
 class PatientProfileView(APIView):
@@ -224,32 +384,41 @@ class PatientCurrentSessionView(APIView):
                 "current_submission": None,
                 "message": "No active session"
             }, status=status.HTTP_200_OK)
-        
-        # Get most recent non-completed submission
-        active_submission = PatientSubmission.objects.filter(
-            patient=patient,
-            status__in=[PatientSubmission.Status.WAITING, PatientSubmission.Status.IN_PROGRESS]
-        ).order_by('-created_at').first()
-        
-        if not active_submission:
+
+        payload = _build_patient_queue_payload(patient)
+        return Response(payload, status=status.HTTP_200_OK)
+
+
+class PatientQueueView(APIView):
+    """
+    Patient queue endpoint.
+
+    GET /api/v1/patients/queue/ - Get the patient's current queue position and simplified progress tracker
+    """
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        try:
+            patient = request.user.patient_profile
+        except Patient.DoesNotExist:
             return Response({
                 "current_submission": None,
-                "message": "No active session"
+                "queue": {
+                    "position": None,
+                    "total_active_cases": 0,
+                    "ahead_of_you": 0,
+                    "behind_you": 0,
+                    "queue_state": "idle",
+                    "queue_state_label": "No active submission",
+                    "last_updated": None,
+                    "progress_percent": 0,
+                    "steps": _build_queue_steps(PatientSubmission.Status.COMPLETED)["steps"],
+                },
+                "message": "Patient profile not found"
             }, status=status.HTTP_200_OK)
-        
-        return Response({
-            "current_submission": {
-                "id": active_submission.id,
-                "symptoms": active_submission.symptoms,
-                "priority": active_submission.priority,
-                "urgency_score": active_submission.urgency_score,
-                "condition": active_submission.condition,
-                "status": active_submission.status,
-                "created_at": active_submission.created_at.isoformat(),
-                "processed_at": active_submission.processed_at.isoformat() if active_submission.processed_at else None,
-            },
-            "message": "Active session found"
-        }, status=status.HTTP_200_OK)
+
+        payload = _build_patient_queue_payload(patient)
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 

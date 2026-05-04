@@ -35,7 +35,10 @@ from triagesync_backend.apps.core.validators import validate_description_length
 
 # Required imports for TriageSubmissionView
 from triagesync_backend.apps.patients.models import PatientSubmission, Patient
-from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_patient_created
+from triagesync_backend.apps.realtime.services.broadcast_service import (
+    broadcast_patient_created,
+    broadcast_queue_snapshot,
+)
 from triagesync_backend.apps.notifications.services.notification_service import NotificationService
 from django.contrib.auth import get_user_model
 
@@ -748,6 +751,12 @@ class TriageSubmissionView(APIView):
 
             # Broadcast WebSocket event (Member 8) - using correct function
             broadcast_patient_created(submission.id, priority, urgency_score)
+            # Also send a full queue snapshot so patients/staff can sync client state
+            try:
+                broadcast_queue_snapshot(submission.id)
+            except Exception:
+                # Non-fatal: best-effort real-time update
+                pass
 
             # Send notifications for new patient submissions
             try:
