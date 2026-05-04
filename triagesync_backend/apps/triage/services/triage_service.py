@@ -120,12 +120,10 @@ def safe_infer_priority(symptoms: str) -> dict:
     """
     try:
         # 1. Legacy-first compatibility path used by existing tests/callers.
-        # Call the module-level `infer_priority` symbol (imported at top)
-        # so unit tests that patch `triage_service.infer_priority` observe
-        # the patched behavior.
         legacy_ai = infer_priority(symptoms)
         if validate_ai_output(legacy_ai):
             legacy_ai.setdefault("source", "AI_SYSTEM")
+            legacy_ai.setdefault("priority_level", legacy_ai.get("priority"))
             return legacy_ai
 
         # 2. Try the full AI recommendation (Gemini)
@@ -134,15 +132,21 @@ def safe_infer_priority(symptoms: str) -> dict:
         # If AI returned a valid recommendation (not an error envelope)
         if isinstance(ai_raw, dict) and not ai_raw.get("error"):
             ai_raw.setdefault("source", "GEMINI_AI")
+            # Sync priority keys
+            if "priority" not in ai_raw and "priority_level" in ai_raw:
+                ai_raw["priority"] = ai_raw["priority_level"]
+            elif "priority_level" not in ai_raw and "priority" in ai_raw:
+                ai_raw["priority_level"] = ai_raw["priority"]
             return ai_raw
 
-        # 3. Fallback to module-level legacy inference and then system fallback
+        # 3. Fallback to rule-based inference and then system fallback
         logger.info("[Triage] Gemini failed or returned error, falling back to rule-based inference")
-        legacy_ai = ai_service.infer_priority(symptoms)
+        legacy_ai = infer_priority(symptoms)
         if validate_ai_output(legacy_ai):
             # Map legacy format to the richer M5 format
             return {
-                "priority_level": legacy_ai.get("priority", 5),
+                "priority": legacy_ai.get("priority", 3),
+                "priority_level": legacy_ai.get("priority", 3),
                 "urgency_score": legacy_ai.get("urgency_score", 50),
                 "condition": legacy_ai.get("condition", "Unknown"),
                 "category": "General",
@@ -156,11 +160,13 @@ def safe_infer_priority(symptoms: str) -> dict:
 
         fallback = get_fallback_ai_output()
         fallback["source"] = "SYSTEM_FALLBACK"
+        fallback.setdefault("priority_level", fallback.get("priority", 3))
         return fallback
     except Exception as e:
         logger.error(f"[Triage] AI inference failed critically: {e}")
         fallback = get_fallback_ai_output()
         fallback["source"] = "ERROR_FALLBACK"
+        fallback.setdefault("priority_level", fallback.get("priority", 3))
         return fallback
 
 

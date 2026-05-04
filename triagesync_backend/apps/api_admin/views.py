@@ -122,7 +122,8 @@ class AuditLogListView(ListAPIView):
 class AdminUserSuspendView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     queryset = User.objects.all()
-    lookup_field = 'user_id'
+    lookup_field = 'id'
+    lookup_url_kwarg = 'user_id'
     serializer_class = SuspendUserSerializer
 
     def patch(self, request, user_id):

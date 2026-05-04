@@ -114,13 +114,27 @@ WSGI_APPLICATION = "triagesync_backend.config.wsgi.application"
 ASGI_APPLICATION = "triagesync_backend.config.asgi.application"
 
 
+import sys
+
+# Detect if running in a test environment
+TESTING = 'test' in sys.argv or 'pytest' in sys.modules or os.getenv('PYTEST_CURRENT_TEST')
+
 database_url = os.getenv("DATABASE_URL")
 
-if database_url:
+if TESTING:
+    # Use SQLite for tests to avoid Neon connectivity issues and speed up execution
+    # Django 4.2+ handles JSONField in SQLite natively.
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "test_db.sqlite3",
+        }
+    }
+elif database_url:
     tmpPostgres = urlparse(database_url)
     db_name = tmpPostgres.path.replace("/", "")
     
-    # Always use PostgreSQL - no SQLite fallback
+    # Always use PostgreSQL - no SQLite fallback for dev/prod
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -136,10 +150,10 @@ if database_url:
         }
     }
 else:
-    # Enforce PostgreSQL - DATABASE_URL is required
+    # Enforce PostgreSQL - DATABASE_URL is required for dev/prod
     raise ValueError(
         "DATABASE_URL environment variable is required. "
-        "PostgreSQL is the only supported database. "
+        "PostgreSQL is the only supported database for the application. "
         "Please set DATABASE_URL to your PostgreSQL connection string."
     )
 
@@ -195,20 +209,20 @@ SIMPLE_JWT = {
 
 REDIS_URL = os.getenv("REDIS_URL")
 
-if REDIS_URL:
+if TESTING or not REDIS_URL:
+    # Fallback for local dev without Redis or during testing
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
+else:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [REDIS_URL],
             },
-        }
-    }
-else:
-    # Fallback for local dev without Redis â€” not suitable for multi-process deployments
-    CHANNEL_LAYERS = {
-        "default": {
-            "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
 

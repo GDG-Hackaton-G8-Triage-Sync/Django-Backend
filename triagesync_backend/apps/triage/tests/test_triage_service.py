@@ -99,6 +99,7 @@ class FallbackAiOutputTests(TestCase):
     @override_settings(TRIAGE_FALLBACK=CUSTOM_FALLBACK)
     def test_fallback_uses_settings(self):
         fallback = get_fallback_ai_output()
+        print(f"DEBUG FALLBACK: {fallback}")
         self.assertEqual(fallback["priority"], 3)
         self.assertEqual(fallback["urgency_score"], 50)
         self.assertEqual(fallback["condition"], "Unknown")
@@ -193,11 +194,13 @@ class SafeInferPriorityTests(TestCase):
         self.assertEqual(result["priority"], 3)
         self.assertEqual(result["urgency_score"], 50)
 
+    @patch("triagesync_backend.apps.triage.services.triage_service.get_triage_recommendation", return_value={"error": "AI failed"})
     @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority", return_value={"bad": "data"})
     @override_settings(TRIAGE_FALLBACK=CUSTOM_FALLBACK)
-    def test_invalid_ai_output_returns_fallback(self, mock_ai):
+    def test_invalid_ai_output_returns_fallback(self, mock_legacy, mock_gemini):
         result = safe_infer_priority("some symptoms")
         self.assertEqual(result["priority"], 3)
+        self.assertEqual(result["source"], "SYSTEM_FALLBACK")
 
     @patch("triagesync_backend.apps.triage.services.triage_service.infer_priority", return_value={
         "priority": 1, "urgency_score": 95, "condition": "Cardiac Event"
