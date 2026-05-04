@@ -196,6 +196,15 @@ SIMPLE_JWT = {
 REDIS_URL = os.getenv("REDIS_URL")
 
 if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+        }
+    }
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -205,7 +214,12 @@ if REDIS_URL:
         }
     }
 else:
-    # Fallback for local dev without Redis â€” not suitable for multi-process deployments
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+    # Fallback for local dev without Redis - not suitable for multi-process deployments
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
