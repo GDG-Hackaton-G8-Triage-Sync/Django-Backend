@@ -314,6 +314,7 @@ class EvaluateTriageIntegrationTests(TestCase):
     @patch("triagesync_backend.apps.triage.services.triage_service.trigger_priority_update")
     @patch("triagesync_backend.apps.triage.services.triage_service.safe_infer_priority",
            return_value={"priority": 3, "urgency_score": 50, "condition": "Fever", "source": "AI_SYSTEM"})
+           
     def test_ai_path_returns_correct_structure(self, mock_ai, mock_update, mock_alert):
         response = evaluate_triage("mild fever")
         self.assertTrue(response["success"])
