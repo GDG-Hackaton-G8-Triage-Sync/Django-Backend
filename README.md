@@ -12,6 +12,7 @@ TriageSync is an AI-powered medical triage platform that helps healthcare facili
 - **🧠 Enriched AI Reasoning**: Triage results now include **Confidence Scores (0-100%)**, clinical rationale, and symptom extraction.
 - **👨‍⚕️ Advanced Staff Tools**: Improved permissions allowing Admins and Staff to view full Clinical Profiles and manage staff assignments.
 - **📊 Command Center Analytics**: Real-time hourly trends for Wait Times and SLA Breach Velocity.
+- **🧾 Patient Queue Tracking**: New patient queue endpoints with real-time snapshot updates over WebSockets.
 
 ## 📖 Documentation Index
 
@@ -50,7 +51,9 @@ That field is also propagated into notification metadata so staff-facing alerts 
 
 ## Photo Upload Usage
 
-Triage endpoints no longer accept or persist new photo uploads. Profile photos are handled via the user profile API (`/api/v1/profile/`), which accepts an optional `profile_photo` file and exposes `profile_photo_name` for display.
+The AI triage endpoint accepts an optional `image` upload, stores it under `triage_attachments/`, and returns an `image_url` for staff viewing. The image is not sent to the AI model.
+
+Profile photos are handled via the patient profile API (`/api/v1/patients/profile/`), which accepts an optional `profile_photo` file and exposes `profile_photo_name` for display.
 
 For historical and audit purposes, legacy fields `PatientSubmission.photo` and `PatientSubmission.photo_name` remain in the database and may contain prior uploads, but triage flows will not populate these fields going forward.
 
@@ -74,6 +77,10 @@ WebSocket connections support both methods:
 Use either method depending on client platform constraints.
 
 Note: WebSocket middleware accepts both query token and Authorization header for backwards compatibility with older clients.
+
+## Real-time Queue Snapshots
+
+Patient queue state is broadcast in real time via WebSockets using the `queue_snapshot` event. The payload mirrors the response shape of `GET /api/v1/patients/queue/`, so clients can replace their local queue state directly.
 
 ## 🚀 Deployment
 

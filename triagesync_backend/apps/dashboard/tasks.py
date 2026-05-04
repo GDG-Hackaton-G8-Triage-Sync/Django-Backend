@@ -19,6 +19,7 @@ from .services.wait_time_service import (
 )
 from triagesync_backend.apps.realtime.services.broadcast_service import (
     broadcast_wait_time_update,
+    broadcast_queue_snapshot,
 )
 
 logger = logging.getLogger("dashboard.tasks")
@@ -59,6 +60,11 @@ def update_wait_times():
                 
                 # Broadcast wait time update via WebSocket
                 broadcast_wait_time_update(submission.id, wait_time, sla_status)
+                # Periodically push queue snapshot so patient clients can reconcile position
+                try:
+                    broadcast_queue_snapshot(submission.id)
+                except Exception:
+                    logger.debug(f"Failed to broadcast queue snapshot for submission {submission.id}")
                 
                 # Check for SLA breaches and trigger alerts
                 check_and_alert_sla_breach(submission)
