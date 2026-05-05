@@ -32,18 +32,19 @@ def calculate_wait_time(submission):
     Logic:
         - If status is 'completed' and processed_at exists: processed_at - created_at
         - If status is 'completed' but processed_at is null: current_time - created_at (with warning)
+        - If status is 'canceled' and processed_at exists: processed_at - created_at
         - Otherwise: current_time - created_at
         
     Requirements: 4.1, 4.2, 4.3, 4.4
     """
-    if submission.status == "completed":
+    if submission.status in {"completed", "canceled"}:
         if submission.processed_at:
             end_time = submission.processed_at
         else:
             # Handle edge case: completed submission without processed_at
             end_time = timezone.now()
             logger.warning(
-                f"Submission {submission.id} is completed but processed_at is null. "
+                f"Submission {submission.id} is {submission.status} but processed_at is null. "
                 f"Using current time for wait time calculation."
             )
     else:
@@ -96,8 +97,8 @@ def check_and_alert_sla_breach(submission):
         
     Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
     """
-    # Skip if submission is completed
-    if submission.status == "completed":
+    # Skip if submission is no longer active
+    if submission.status in {"completed", "canceled"}:
         return
     
     wait_time = calculate_wait_time(submission)
@@ -172,7 +173,7 @@ def get_wait_time_analytics():
     
     # Get completed submissions in last 24 hours. Use Coalesce(processed_at, Now())
     twenty_four_hours_ago = now - timedelta(hours=24)
-    completed_24h = PatientSubmission.objects.filter(status="completed", created_at__gte=twenty_four_hours_ago)
+    completed_24h = PatientSubmission.objects.filter(status__in=["completed", "canceled"], created_at__gte=twenty_four_hours_ago)
 
     if completed_24h.exists():
         completed_wait_expr = ExpressionWrapper(Coalesce(F('processed_at'), Now()) - F('created_at'), output_field=DurationField())

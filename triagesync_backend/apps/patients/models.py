@@ -36,6 +36,7 @@ class PatientSubmission(models.Model):
         WAITING = "waiting"
         IN_PROGRESS = "in_progress"
         COMPLETED = "completed"
+        CANCELED = "canceled"
 
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="submissions")
 

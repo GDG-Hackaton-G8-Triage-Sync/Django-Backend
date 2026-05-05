@@ -5,6 +5,7 @@ from .views import (
     PatientSubmissionDetailView,
     PatientCurrentSessionView,
     PatientQueueView,
+    PatientCancelCurrentSessionView,
     TriageSubmissionsHistoryView,
     ProfilePhotoUploadView,
     ProfilePhotoDeleteView,
@@ -30,6 +31,7 @@ urlpatterns = [
     
     # Current active session
     path("current/", PatientCurrentSessionView.as_view(), name="patient-current-session"),
+    path("current/cancel/", PatientCancelCurrentSessionView.as_view(), name="patient-cancel-current-session"),
 
     # Patient queue tracker
     path("queue/", PatientQueueView.as_view(), name="patient-queue"),

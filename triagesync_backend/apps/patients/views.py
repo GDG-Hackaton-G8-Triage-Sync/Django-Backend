@@ -3,6 +3,7 @@ from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+import os
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiTypes
@@ -39,6 +40,7 @@ def _build_queue_steps(status):
         {"key": "in_review", "label": "In review", "completed": status in [PatientSubmission.Status.IN_PROGRESS, PatientSubmission.Status.COMPLETED]},
         {"key": "being_seen", "label": "Being seen", "completed": status in [PatientSubmission.Status.IN_PROGRESS, PatientSubmission.Status.COMPLETED]},
         {"key": "completed", "label": "Completed", "completed": status == PatientSubmission.Status.COMPLETED},
+        {"key": "canceled", "label": "Canceled", "completed": status == PatientSubmission.Status.CANCELED},
     ]
 
     if status == PatientSubmission.Status.WAITING:
@@ -49,6 +51,10 @@ def _build_queue_steps(status):
         current_step = "Being seen"
         progress_percent = 75
         status_label = "A clinician is reviewing your case"
+    elif status == PatientSubmission.Status.CANCELED:
+        current_step = "Canceled"
+        progress_percent = 100
+        status_label = "This triage was canceled"
     else:
         current_step = "Completed"
         progress_percent = 100
@@ -148,7 +154,11 @@ def _build_patient_queue_payload(patient):
             "ahead_of_you": 0,
             "behind_you": 0,
             "queue_state": current_submission.status,
-            "queue_state_label": "Completed" if current_submission.status == PatientSubmission.Status.COMPLETED else "No active queue position",
+            "queue_state_label": (
+                "Canceled" if current_submission.status == PatientSubmission.Status.CANCELED
+                else "Completed" if current_submission.status == PatientSubmission.Status.COMPLETED
+                else "No active queue position"
+            ),
             "last_updated": current_submission.processed_at.isoformat() if current_submission.processed_at else current_submission.created_at.isoformat(),
             "progress_percent": status_summary["progress_percent"],
             "current_step": status_summary["current_step"],
@@ -397,6 +407,38 @@ class PatientQueueView(GenericAPIView):
 
         payload = _build_patient_queue_payload(patient)
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class PatientCancelCurrentSessionView(APIView):
+    """Cancel the patient's current active triage submission explicitly."""
+    permission_classes = [IsAuthenticated, IsPatient]
+
+    def post(self, request):
+        try:
+            patient = request.user.patient_profile
+        except Patient.DoesNotExist:
+            return not_found_response("Patient profile not found")
+
+        submission = (
+            PatientSubmission.objects
+            .filter(patient=patient, status__in=ACTIVE_QUEUE_STATUSES)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not submission:
+            return not_found_response("No active triage session found")
+
+        submission.status = PatientSubmission.Status.CANCELED
+        submission.processed_at = timezone.now()
+        submission.save(update_fields=["status", "processed_at"])
+
+        return Response({
+            "message": "Triage canceled successfully",
+            "submission_id": submission.id,
+            "status": submission.status,
+            "current_session": _build_patient_queue_payload(patient),
+        }, status=status.HTTP_200_OK)
 
 
 

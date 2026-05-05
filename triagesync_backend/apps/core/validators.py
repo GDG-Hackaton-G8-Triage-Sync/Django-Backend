@@ -72,6 +72,8 @@ def validate_status_transition(current_status, new_status):
     - waiting -> in_progress
     - in_progress -> completed
     - waiting -> completed (skip in_progress)
+    - waiting -> canceled
+    - in_progress -> canceled
     
     Invalid transitions:
     - completed -> any other status
@@ -87,7 +89,7 @@ def validate_status_transition(current_status, new_status):
     Raises:
         ValidationError: If transition is invalid
     """
-    valid_statuses = ['waiting', 'in_progress', 'completed']
+    valid_statuses = ['waiting', 'in_progress', 'completed', 'canceled']
     
     if current_status not in valid_statuses:
         raise ValidationError(f"Invalid current status: {current_status}")
@@ -103,7 +105,8 @@ def validate_status_transition(current_status, new_status):
     valid_transitions = {
         'waiting': ['in_progress', 'completed'],
         'in_progress': ['completed'],
-        'completed': []  # No transitions from completed
+        'completed': [],  # No transitions from completed
+        'canceled': [],
     }
     
     if new_status not in valid_transitions[current_status]:
