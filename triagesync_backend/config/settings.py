@@ -220,6 +220,12 @@ if TESTING or not REDIS_URL:
         }
     }
 else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+    # Fallback for local dev without Redis - not suitable for multi-process deployments
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
