@@ -97,9 +97,12 @@ def _estimate_wait_range_minutes(submission, queue_position, total_active_cases)
 
 def _build_patient_queue_payload(patient):
     active_queue = list(_get_active_queue_queryset())
-    patient_active_queue = [submission for submission in active_queue if submission.patient_id == patient.id]
-
-    current_submission = patient_active_queue[0] if patient_active_queue else PatientSubmission.objects.filter(patient=patient).order_by("-created_at").first()
+    # Pre-index active_queue for faster lookup
+    active_map = {submission.id: index for index, submission in enumerate(active_queue, start=1)}
+    
+    patient_active_submissions = [sub for sub in active_queue if sub.patient_id == patient.id]
+    
+    current_submission = patient_active_submissions[0] if patient_active_submissions else PatientSubmission.objects.filter(patient=patient).order_by("-created_at").first()
     if not current_submission:
         return {
             "current_submission": None,
@@ -117,13 +120,7 @@ def _build_patient_queue_payload(patient):
             "message": "No active queue item found",
         }
 
-    queue_position = None
-    if current_submission.status in ACTIVE_QUEUE_STATUSES:
-        for index, submission in enumerate(active_queue, start=1):
-            if submission.id == current_submission.id:
-                queue_position = index
-                break
-
+    queue_position = active_map.get(current_submission.id)
     status_summary = _build_queue_steps(current_submission.status)
     wait_time_minutes = calculate_wait_time(current_submission)
     estimated_wait_range = _estimate_wait_range_minutes(current_submission, queue_position, len(active_queue))
@@ -199,6 +196,13 @@ class PatientProfileView(GenericAPIView):
     def get(self, request):
         """Get authenticated patient's profile."""
         patient = self.get_or_create_patient(request.user)
+        
+        api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+        profile_photo_url = None
+        if getattr(patient, "profile_photo", None):
+            relative_url = patient.profile_photo.url
+            profile_photo_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
+            
         return Response({
             "id": patient.id,
             "name": patient.name,
@@ -207,7 +211,7 @@ class PatientProfileView(GenericAPIView):
             "user_id": patient.user.id,
             "username": patient.user.username,
             "email": patient.user.email,
-            "profile_photo": patient.profile_photo.url if getattr(patient, "profile_photo", None) else None,
+            "profile_photo": profile_photo_url,
             "profile_photo_name": getattr(patient, "profile_photo_name", None),
         }, status=status.HTTP_200_OK)
     
@@ -480,9 +484,13 @@ class ProfilePhotoUploadView(GenericAPIView):
         
         logger.info(f"Uploaded profile photo for patient {patient.id}")
         
+        api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+        relative_url = patient.profile_photo.url
+        profile_photo_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
+        
         return Response({
             "message": "Profile photo uploaded successfully",
-            "profile_photo": request.build_absolute_uri(patient.profile_photo.url) if patient.profile_photo else None,
+            "profile_photo": profile_photo_url,
             "profile_photo_name": patient.profile_photo_name
         }, status=status.HTTP_200_OK)
 

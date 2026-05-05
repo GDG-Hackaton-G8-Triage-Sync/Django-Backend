@@ -180,7 +180,9 @@ class TriageAIView(GenericAPIView):
                 unique_name = f"triage_attachments/{uuid.uuid4().hex}_{getattr(image_file, 'name', 'upload') }"
                 saved_name = default_storage.save(unique_name, image_file)
                 try:
-                    image_url = default_storage.url(saved_name)
+                    relative_url = default_storage.url(saved_name)
+                    api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+                    image_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
                 except Exception:
                     # If the storage backend doesn't provide a URL, fall back to the saved path
                     image_url = saved_name
