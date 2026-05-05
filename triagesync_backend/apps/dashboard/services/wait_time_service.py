@@ -12,7 +12,8 @@ Requirements: 4.1, 4.2, 4.3, 4.4, 5.2, 5.3, 6.1, 6.2, 6.3, 6.4, 6.5,
 import logging
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Avg, Max, Count, Q
+from django.db.models import Avg, Max, F, ExpressionWrapper, DurationField
+from django.db.models.functions import Coalesce, Now
 from triagesync_backend.apps.patients.models import PatientSubmission
 
 logger = logging.getLogger("dashboard.wait_time_service")
@@ -146,65 +147,55 @@ def get_wait_time_analytics():
     now = timezone.now()
     
     # Get active submissions (waiting or in_progress)
-    active_submissions = PatientSubmission.objects.filter(
-        status__in=["waiting", "in_progress"]
-    )
-    
-    # Calculate average wait time for active cases
-    if active_submissions.exists():
-        total_wait = sum(calculate_wait_time(s) for s in active_submissions)
-        avg_wait_active = round(total_wait / active_submissions.count(), 1)
-    else:
-        avg_wait_active = 0.0
-    
-    # Calculate maximum wait time for active cases
-    if active_submissions.exists():
-        max_wait_active = max(calculate_wait_time(s) for s in active_submissions)
-    else:
-        max_wait_active = 0.0
-    
-    # Count SLA warnings (25-30 minutes) and breaches (30+ minutes)
+    active_submissions = PatientSubmission.objects.filter(status__in=["waiting", "in_progress"])
+
+    # Annotate wait duration = now - created_at and compute DB-side aggregates
+    wait_expr = ExpressionWrapper(Now() - F("created_at"), output_field=DurationField())
+    annotated_active = active_submissions.annotate(wait=wait_expr)
+
+    avg_wait_active = 0.0
+    max_wait_active = 0.0
     sla_warning_count = 0
     sla_breach_count = 0
+
+    if annotated_active.exists():
+        agg = annotated_active.aggregate(avg_wait=Avg("wait"), max_wait=Max("wait"))
+        avg_wait_duration = agg.get("avg_wait")
+        max_wait_duration = agg.get("max_wait")
+        if avg_wait_duration:
+            avg_wait_active = round(avg_wait_duration.total_seconds() / 60.0, 1)
+        if max_wait_duration:
+            max_wait_active = round(max_wait_duration.total_seconds() / 60.0, 1)
+
+        sla_warning_count = annotated_active.filter(wait__gte=timezone.timedelta(minutes=25), wait__lt=timezone.timedelta(minutes=30)).count()
+        sla_breach_count = annotated_active.filter(wait__gte=timezone.timedelta(minutes=30)).count()
     
-    for submission in active_submissions:
-        wait_time = calculate_wait_time(submission)
-        if wait_time >= 30:
-            sla_breach_count += 1
-        elif wait_time >= 25:
-            sla_warning_count += 1
-    
-    # Get completed submissions in last 24 hours
+    # Get completed submissions in last 24 hours. Use Coalesce(processed_at, Now())
     twenty_four_hours_ago = now - timedelta(hours=24)
-    completed_24h = PatientSubmission.objects.filter(
-        status="completed",
-        created_at__gte=twenty_four_hours_ago
-    )
-    
-    # Calculate average wait time for completed cases in last 24h
+    completed_24h = PatientSubmission.objects.filter(status="completed", created_at__gte=twenty_four_hours_ago)
+
     if completed_24h.exists():
-        total_wait_completed = sum(calculate_wait_time(s) for s in completed_24h)
-        avg_wait_completed_24h = round(total_wait_completed / completed_24h.count(), 1)
+        completed_wait_expr = ExpressionWrapper(Coalesce(F('processed_at'), Now()) - F('created_at'), output_field=DurationField())
+        agg_completed = completed_24h.annotate(wait=completed_wait_expr).aggregate(avg_wait=Avg('wait'))
+        avg_wait_completed_duration = agg_completed.get('avg_wait')
+        avg_wait_completed_24h = round(avg_wait_completed_duration.total_seconds() / 60.0, 1) if avg_wait_completed_duration else 0.0
     else:
         avg_wait_completed_24h = 0.0
-    
-    # Calculate hourly wait time trends for last 12 hours
+
+    # Calculate hourly wait time trends for last 12 hours using DB-side aggregation
     wait_time_trends = []
     for hour_offset in range(11, -1, -1):  # 11 hours ago to current hour
         hour_start = now - timedelta(hours=hour_offset + 1)
         hour_end = now - timedelta(hours=hour_offset)
-        
-        hour_submissions = PatientSubmission.objects.filter(
-            created_at__gte=hour_start,
-            created_at__lt=hour_end
-        )
-        
-        if hour_submissions.exists():
-            total_wait_hour = sum(calculate_wait_time(s) for s in hour_submissions)
-            avg_wait_hour = round(total_wait_hour / hour_submissions.count(), 1)
+
+        hour_qs = PatientSubmission.objects.filter(created_at__gte=hour_start, created_at__lt=hour_end)
+        if hour_qs.exists():
+            hour_agg = hour_qs.annotate(wait=ExpressionWrapper(Now() - F('created_at'), output_field=DurationField())).aggregate(avg_wait=Avg('wait'))
+            avg_wait_hour_duration = hour_agg.get('avg_wait')
+            avg_wait_hour = round(avg_wait_hour_duration.total_seconds() / 60.0, 1) if avg_wait_hour_duration else 0.0
         else:
             avg_wait_hour = 0.0
-        
+
         wait_time_trends.append(avg_wait_hour)
     
     return {

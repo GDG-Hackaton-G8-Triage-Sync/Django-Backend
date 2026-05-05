@@ -15,7 +15,7 @@ import json
 import re
 from io import BytesIO
 
-from asgiref.sync import iscoroutinefunction, markcoroutinefunction
+from asgiref.sync import iscoroutinefunction, markcoroutinefunction, sync_to_async
 
 ALLOWED_KEYS = frozenset({"age", "gender", "symptoms", "description", "blood_type", "prompt", "file", "image", "photo"})
 TRIAGE_PATH_PREFIX = "/api/v1/triage/"
@@ -54,7 +54,9 @@ class PayloadSanitizerMiddleware:
 
     async def __acall__(self, request):
         if self._should_sanitize(request):
-            self._sanitize(request)
+            # Offload the potentially blocking body parsing/sanitization to a
+            # threadpool so the ASGI event loop isn't blocked by sync IO/CPU work.
+            await sync_to_async(self._sanitize)(request)
         return await self.get_response(request)
 
     def _should_sanitize(self, request):

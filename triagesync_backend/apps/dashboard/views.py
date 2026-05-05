@@ -2,6 +2,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiTypes
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 from triagesync_backend.apps.authentication.permissions import IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, validation_error_response, not_found_response
@@ -24,6 +27,14 @@ class StaffPatientQueueView(ListAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
     pagination_class = StandardResultsSetPagination
     serializer_class = DashboardPatientSerializer
+
+    # Queue refreshes happen frequently on the dashboard. Cache briefly per
+    # Authorization header so repeated refreshes do not keep rebuilding the same
+    # queryset and pagination metadata under ASGI.
+    @method_decorator(vary_on_headers("Authorization"))
+    @method_decorator(cache_page(5))
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def get_queryset(self):
         priority = self.request.query_params.get("priority")

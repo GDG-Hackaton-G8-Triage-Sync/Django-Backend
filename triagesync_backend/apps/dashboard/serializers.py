@@ -40,6 +40,15 @@ class DashboardPatientSerializer(serializers.ModelSerializer):
         
         Requirements: 4.5
         """
+        # Prefer DB-annotated `wait` duration (from get_patient_queue) to avoid
+        # calling Python-side calculation for each object in a list.
+        wait = getattr(obj, 'wait', None)
+        if wait is not None:
+            try:
+                return round(wait.total_seconds() / 60.0, 1)
+            except Exception:
+                pass
+
         from .services.wait_time_service import calculate_wait_time
         return calculate_wait_time(obj)
     
@@ -49,6 +58,16 @@ class DashboardPatientSerializer(serializers.ModelSerializer):
         
         Requirements: 5.1
         """
+        # Use annotated wait duration if available to avoid recalculating.
+        wait = getattr(obj, 'wait', None)
+        if wait is not None:
+            try:
+                minutes = round(wait.total_seconds() / 60.0, 1)
+                from .services.wait_time_service import get_sla_status
+                return get_sla_status(minutes)
+            except Exception:
+                pass
+
         from .services.wait_time_service import calculate_wait_time, get_sla_status
         wait_time = calculate_wait_time(obj)
         return get_sla_status(wait_time)
