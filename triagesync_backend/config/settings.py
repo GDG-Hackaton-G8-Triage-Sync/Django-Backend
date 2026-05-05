@@ -180,6 +180,9 @@ project_static_dir = BASE_DIR / "static"
 
 if project_static_dir.exists():
     STATICFILES_DIRS.append(project_static_dir)
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
     
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
