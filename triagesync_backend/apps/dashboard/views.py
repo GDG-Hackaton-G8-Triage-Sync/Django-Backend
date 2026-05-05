@@ -1,10 +1,17 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiTypes
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 from triagesync_backend.apps.authentication.permissions import IsStaffOrAdmin
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
 from triagesync_backend.apps.core.response import error_response, validation_error_response, not_found_response
-from .serializers import DashboardPatientSerializer
+from .serializers import DashboardPatientSerializer, StatusUpdateSerializer, PriorityUpdateSerializer
+from rest_framework import serializers
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer, SuccessMessageSerializer
+from rest_framework.generics import ListAPIView, GenericAPIView
 from .services.dashboard_service import get_patient_queue
 from triagesync_backend.apps.patients.models import PatientSubmission
 from .services.dashboard_service import update_priority, verify_patient
@@ -15,58 +22,43 @@ from .services.dashboard_service import update_patient_status
 from django.core.exceptions import ValidationError
 
 
-class StaffPatientQueueView(APIView):
-    """
-    GET /api/v1/staff/patients/
-    Staff patient queue with pagination
-    Query params: priority, status, category, page, page_size (default 20, max 100)
-    
-    Session-based category filter persistence:
-    - If category parameter is provided, store it in session
-    - If category parameter is empty string, clear session preference
-    - If no category parameter, use stored session preference
-    """
+class StaffPatientQueueView(ListAPIView):
+    """List patient queue for staff members."""
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
     pagination_class = StandardResultsSetPagination
+    serializer_class = DashboardPatientSerializer
 
-    def get(self, request):
-        priority = request.query_params.get("priority")
-        status_param = request.query_params.get("status")
+    # Queue refreshes happen frequently on the dashboard. Cache briefly per
+    # Authorization header so repeated refreshes do not keep rebuilding the same
+    # queryset and pagination metadata under ASGI.
+    @method_decorator(vary_on_headers("Authorization"))
+    @method_decorator(cache_page(5))
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def get_queryset(self):
+        priority = self.request.query_params.get("priority")
+        status_param = self.request.query_params.get("status")
         
-        # Handle category filter with session persistence
-        category_param = request.query_params.get("category")
-        
+        category_param = self.request.query_params.get("category")
         if category_param is not None:
-            # Category parameter is explicitly provided
             if category_param == "":
-                # Empty string means clear the filter
-                if "category_filter" in request.session:
-                    del request.session["category_filter"]
+                if "category_filter" in self.request.session:
+                    del self.request.session["category_filter"]
                 category = None
             else:
-                # Store the filter preference in session
-                request.session["category_filter"] = category_param
+                self.request.session["category_filter"] = category_param
                 category = category_param
         else:
-            # No category parameter - use stored preference if available
-            category = request.session.get("category_filter", None)
+            category = self.request.session.get("category_filter", None)
 
-        patients = get_patient_queue(priority, status_param, category)
-        
-        # Apply pagination
-        paginator = self.pagination_class()
-        paginated_patients = paginator.paginate_queryset(patients, request)
-        
-        serializer = DashboardPatientSerializer(paginated_patients, many=True)
-
-        return paginator.get_paginated_response(serializer.data)
+        return get_patient_queue(priority, status_param, category)
 
 
-class UpdatePatientStatusView(APIView):
-    """
-    PATCH /api/v1/staff/patient/{id}/status/
-    """
+class UpdatePatientStatusView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
+    queryset = PatientSubmission.objects.all()
+    serializer_class = StatusUpdateSerializer
 
     def patch(self, request, id):
         new_status = request.data.get("status")
@@ -89,28 +81,26 @@ class UpdatePatientStatusView(APIView):
                 status_code=400
             )
     
-class AdminOverviewView(APIView):
-    """
-    GET /api/v1/admin/overview/
-    """
+class AdminOverviewView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         data = get_admin_overview()
         return Response(data)
     
-class AdminAnalyticsView(APIView):
-    """
-    GET /api/v1/admin/analytics/
-    """
+class AdminAnalyticsView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         data = get_admin_analytics()
         return Response(data)
     
-class UpdatePatientPriorityView(APIView):
+class UpdatePatientPriorityView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
+    queryset = PatientSubmission.objects.all()
+    serializer_class = PriorityUpdateSerializer
 
     def patch(self, request, id):
         priority = request.data.get("priority")
@@ -149,8 +139,10 @@ class UpdatePatientPriorityView(APIView):
                 status_code=400
             )
         
-class VerifyPatientView(APIView):
+class VerifyPatientView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsStaffOrAdmin]
+    queryset = PatientSubmission.objects.all()
+    serializer_class = serializers.Serializer
 
     def patch(self, request, id):
         try:

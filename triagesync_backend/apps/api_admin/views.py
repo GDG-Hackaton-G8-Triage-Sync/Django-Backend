@@ -1,7 +1,7 @@
-from rest_framework.views import APIView
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 import csv
 from django.http import HttpResponse
 from django.db import transaction
@@ -11,42 +11,28 @@ from triagesync_backend.apps.authentication.permissions import IsAdmin
 from triagesync_backend.apps.patients.models import PatientSubmission
 from .models import AuditLog, SystemConfig
 from triagesync_backend.apps.core.response import error_response
-from .serializers import AdminUserSerializer, RoleUpdateSerializer, AuditLogSerializer
+from .serializers import AdminUserSerializer, RoleUpdateSerializer, AuditLogSerializer, SystemConfigSerializer, SuspendUserSerializer
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer, SuccessMessageSerializer
+from rest_framework.generics import ListAPIView, UpdateAPIView, DestroyAPIView, GenericAPIView
 from .utils import log_action
 
 
-class AdminUserListView(APIView):
-    """
-    Admin user listing endpoint.
-    
-    GET /api/v1/admin/users/
-    Returns all users ordered by date_joined descending (admin only).
-    
-    Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
-    """
+class AdminUserListView(ListAPIView):
+    """List all users in the system (admin only)."""
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    def get(self, request):
-        """List all users in the system (admin only)."""
-        users = User.objects.all().order_by('-date_joined')
-        serializer = AdminUserSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    serializer_class = AdminUserSerializer
+    queryset = User.objects.all().order_by('-date_joined')
 
 
-class AdminUserRoleUpdateView(APIView):
-    """
-    Admin role management endpoint.
-    
-    PATCH /api/v1/admin/users/{id}/role/
-    Updates a user's role (admin only).
-    
-    Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 9.2, 9.4
-    """
+class AdminUserRoleUpdateView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
-    
+    serializer_class = RoleUpdateSerializer
+    queryset = User.objects.all()
+    lookup_field = 'user_id'
+
     def patch(self, request, user_id):
         """Update a user's role (admin only)."""
-        serializer = RoleUpdateSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         
         if not serializer.is_valid():
             return error_response(
@@ -87,68 +73,33 @@ class AdminUserRoleUpdateView(APIView):
             )
 
 
-class AdminSubmissionDeleteView(APIView):
-    """
-    Admin submission deletion endpoint.
-    
-    DELETE /api/v1/admin/patient/{id}/
-    Deletes a triage submission (admin only).
-    
-    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 9.3, 9.4
-    """
+class AdminSubmissionDeleteView(DestroyAPIView):
+    """Delete a triage submission (admin only)."""
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    def delete(self, request, submission_id):
-        """Delete a triage submission (admin only)."""
-        try:
-            with transaction.atomic():
-                submission = PatientSubmission.objects.select_for_update().get(id=submission_id)
-                submission.delete()
-                
-                return Response(
-                    {"message": "Submission deleted successfully"},
-                    status=status.HTTP_200_OK
-                )
-        except PatientSubmission.DoesNotExist:
-            return error_response(
-                code="NOT_FOUND",
-                message="Submission not found",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return error_response(
-                code="INTERNAL_SERVER_ERROR",
-                message=str(e),
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-class AdminUserDeleteView(APIView):
-    """
-    Admin user deletion endpoint.
-    
-    DELETE /api/v1/admin/users/{id}/
-    Deletes a user (admin only).
-    """
+    queryset = PatientSubmission.objects.all()
+    lookup_url_kwarg = 'submission_id'
+    serializer_class = serializers.Serializer
+
+class AdminUserDeleteView(DestroyAPIView):
+    """Delete a user (admin only)."""
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    def delete(self, request, user_id):
-        """Delete a user (admin only)."""
+    queryset = User.objects.all()
+    lookup_url_kwarg = 'user_id'
+    serializer_class = serializers.Serializer
+
+    def perform_destroy(self, instance):
+        user_email = instance.email
+        log_action(
+            actor=self.request.user,
+            action_type="USER_DELETED",
+            target_description=f"User {user_email} account erased",
+            justification=self.request.data.get('justification', 'No justification provided')
+        )
+        instance.delete()
+
+    def destroy(self, request, *args, **kwargs):
         try:
-            with transaction.atomic():
-                user = User.objects.select_for_update().get(id=user_id)
-                user_email = user.email
-                user.delete()
-                
-                log_action(
-                    actor=request.user,
-                    action_type="USER_DELETED",
-                    target_description=f"User {user_email} account erased",
-                    justification=request.data.get('justification', 'No justification provided')
-                )
-                
-                return Response(
-                    {"message": "User deleted successfully"},
-                    status=status.HTTP_200_OK
-                )
+            return super().destroy(request, *args, **kwargs)
         except User.DoesNotExist:
             return error_response(
                 code="NOT_FOUND",
@@ -162,30 +113,19 @@ class AdminUserDeleteView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class AuditLogListView(APIView):
-    """
-    Admin audit log listing endpoint.
-    
-    GET /api/v1/admin/audit-logs/
-    Returns all audit logs (admin only).
-    """
+class AuditLogListView(ListAPIView):
+    """List all audit logs in the system (admin only)."""
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    def get(self, request):
-        """List all audit logs in the system (admin only)."""
-        logs = AuditLog.objects.all().order_by('-timestamp')
-        serializer = AuditLogSerializer(logs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    serializer_class = AuditLogSerializer
+    queryset = AuditLog.objects.all().order_by('-timestamp')
 
-class AdminUserSuspendView(APIView):
-    """
-    Admin user suspension endpoint.
-    
-    PATCH /api/v1/admin/users/{id}/suspend/
-    Suspends or unsuspends a user account (admin only).
-    """
+class AdminUserSuspendView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
-    
+    queryset = User.objects.all()
+    lookup_field = 'id'
+    lookup_url_kwarg = 'user_id'
+    serializer_class = SuspendUserSerializer
+
     def patch(self, request, user_id):
         """Toggle user suspension status (admin only)."""
         is_suspended = request.data.get('is_suspended')
@@ -200,7 +140,7 @@ class AdminUserSuspendView(APIView):
         
         try:
             with transaction.atomic():
-                user = User.objects.select_for_update().get(id=user_id)
+                user = self.get_object()
                 user.is_suspended = is_suspended
                 user.suspension_reason = reason
                 user.save()
@@ -230,19 +170,14 @@ class AdminUserSuspendView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class SystemConfigView(APIView):
-    """
-    Admin system configuration endpoint.
-    
-    GET /api/v1/admin/config/
-    PATCH /api/v1/admin/config/
-    Manages global system settings (admin only).
-    """
+class SystemConfigView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
-    
+    queryset = SystemConfig.objects.all()
+    serializer_class = SystemConfigSerializer
+
     def get(self, request):
         """List all system configurations."""
-        configs = SystemConfig.objects.all()
+        configs = self.get_queryset()
         data = {c.key: c.value for c in configs}
         return Response(data, status=status.HTTP_200_OK)
     
@@ -266,13 +201,11 @@ class SystemConfigView(APIView):
                 )
                 
                 if not created:
-                    # Update existing config
                     old_value = config.value
                     config.value = value
                     config.updated_by = request.user
                     config.save()
                 else:
-                    # New config was created with defaults
                     old_value = None
                 
                 log_action(
@@ -293,15 +226,11 @@ class SystemConfigView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class AdminReportExportView(APIView):
-    """
-    Admin report export endpoint.
-    
-    GET /api/v1/admin/reports/export/
-    Generates a CSV summary of patient throughput (admin only).
-    """
+class AdminReportExportView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
-    
+    queryset = PatientSubmission.objects.all()
+    serializer_class = serializers.Serializer
+
     def get(self, request):
         """Export system metrics as CSV."""
         response = HttpResponse(content_type='text/csv')
@@ -310,7 +239,7 @@ class AdminReportExportView(APIView):
         writer = csv.writer(response)
         writer.writerow(['ID', 'Patient', 'Condition', 'Priority', 'Status', 'Wait Time (mins)', 'Created At'])
         
-        submissions = PatientSubmission.objects.all().order_by('-created_at')
+        submissions = self.get_queryset().order_by('-created_at')
         
         for sub in submissions:
             wait_time = "N/A"

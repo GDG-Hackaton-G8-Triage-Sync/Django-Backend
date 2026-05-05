@@ -1,6 +1,6 @@
 import logging
 from triagesync_backend.apps.patients.models import PatientSubmission
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from triagesync_backend.apps.realtime.services.broadcast_service import broadcast_status_changed
 from triagesync_backend.apps.core.validators import validate_status_transition
@@ -39,7 +39,29 @@ def get_patient_queue(priority=None, status=None, category=None):
     Returns:
         QuerySet of PatientSubmission ordered by priority, urgency_score, created_at
     """
-    queryset = PatientSubmission.objects.select_related('patient__user').all()
+    # Annotate each submission with current wait duration to avoid per-object
+    # Python-side calculations in serializers. This keeps the DB as the heavy
+    # lifter and reduces Python CPU time when serializing lists.
+    wait_expr = ExpressionWrapper(timezone.now() - F("created_at"), output_field=DurationField())
+    queryset = (
+        PatientSubmission.objects
+        .select_related('patient')
+        .only(
+            'id',
+            'patient__name',
+            'symptoms',
+            'priority',
+            'urgency_score',
+            'condition',
+            'category',
+            'status',
+            'verified_by_user',
+            'verified_at',
+            'created_at',
+            'reason',
+        )
+        .annotate(wait=wait_expr)
+    )
 
     # Apply filters if provided
     if priority:
@@ -110,8 +132,14 @@ def get_admin_overview():
     active_submissions = PatientSubmission.objects.filter(status__in=["waiting", "in_progress"])
     avg_wait = 0
     if active_submissions.exists():
-        total_wait_mins = sum((now - s.created_at).total_seconds() / 60 for s in active_submissions)
-        avg_wait = total_wait_mins / active_submissions.count()
+        # Compute average wait time in the database using an expression to avoid
+        # materializing all rows into Python memory. Annotate each row with
+        # the duration between now and created_at, then take the average.
+        wait_expr = ExpressionWrapper(timezone.now() - F("created_at"), output_field=DurationField())
+        agg = active_submissions.annotate(wait=wait_expr).aggregate(avg_wait=Avg("wait"))
+        avg_wait_duration = agg.get("avg_wait")
+        if avg_wait_duration is not None:
+            avg_wait = (avg_wait_duration.total_seconds() / 60.0)
 
     # SLA Breach count: Patients waiting > 30 minutes
     sla_threshold = now - timezone.timedelta(minutes=30)
@@ -153,26 +181,32 @@ def get_admin_analytics():
     
     # 2. Calculate SLA Breach Velocity (Last 12 Hours)
     sla_breach_velocity = []
-    
     for i in range(11, -1, -1):
         hour_start = now - timezone.timedelta(hours=i)
         hour_end = hour_start + timezone.timedelta(hours=1)
-        
-        # Submissions handled in this hour window
-        hour_submissions = PatientSubmission.objects.filter(
+
+        # Count processed submissions in the hour where processing took >30 minutes
+        processed_breaches = PatientSubmission.objects.filter(
+            processed_at__isnull=False,
+            processed_at__gte=hour_start,
+            processed_at__lt=hour_end,
+            processed_at__gt=F('created_at') + timezone.timedelta(minutes=30)
+        ).count()
+
+        # Count unprocessed submissions in the hour that are already exceeding 30 minutes
+        # Count unprocessed submissions created in this hour that are already
+        # exceeding the 30 minute SLA threshold. Use chained filters to avoid
+        # duplicate keyword arguments.
+        unprocessed_qs = PatientSubmission.objects.filter(
+            processed_at__isnull=True,
             created_at__gte=hour_start,
-            created_at__lt=hour_end
+            created_at__lt=hour_end,
         )
-        
-        # Count breaches (exceeding 30m target)
-        breaches = 0
-        for s in hour_submissions:
-            if s.processed_at:
-                if (s.processed_at - s.created_at).total_seconds() / 60 > 30:
-                    breaches += 1
-            elif (now - s.created_at).total_seconds() / 60 > 30:
-                breaches += 1
-        sla_breach_velocity.append(breaches)
+        unprocessed_breaches = unprocessed_qs.filter(
+            created_at__lt=now - timezone.timedelta(minutes=30)
+        ).count()
+
+        sla_breach_velocity.append(processed_breaches + unprocessed_breaches)
 
     # 3. Common Conditions Mapping
     conditions_query = (

@@ -5,15 +5,15 @@ from django.core.files.storage import default_storage
 
 # New AI-based triage endpoint
 from .services.ai_service import get_triage_recommendation
-from .serializers import TriageAIResponseSerializer
-from .serializers import PDFUploadSerializer
+from .serializers import TriageAIResponseSerializer, PDFUploadSerializer, TriageSubmissionSerializer, TriageInputSerializer, TriageAIRequestSerializer
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
 from rest_framework import status
-
 from rest_framework.response import Response
-
 from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 import logging
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.core.exceptions import ValidationError
 
 from .serializers import TriageAIResponseSerializer
@@ -59,8 +59,7 @@ def _json_safe_value(value):
 def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=None):
     """Persist AI/PDF triage interactions as permanent submissions for authenticated patients.
 
-    NOTE: Photo persistence from AI/PDF flows has been disabled. Profile photos
-    are stored on the Patient model instead.
+    This function also handles real-time broadcasts and notifications for the new submission.
     """
     user = request.user if request.user and request.user.is_authenticated else None
     if not user or getattr(user, "role", None) != "patient":
@@ -86,14 +85,17 @@ def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=
         if extra_metadata:
             metadata.update(_json_safe_value(extra_metadata))
 
-        # Do NOT persist photo/file references coming from AI/PDF flows.
-        # Profile photos live on the Patient model (`profile_photo`).
-        return PatientSubmission.objects.create(
+        # Capture priority and urgency early for notifications/broadcasts
+        priority = ai_output.get("priority") or ai_output.get("priority_level") or 3
+        urgency_score = ai_output.get("urgency_score", 50)
+        condition = ai_output.get("condition", "Unknown")
+
+        submission = PatientSubmission.objects.create(
             patient=patient,
             symptoms=symptoms,
-            priority=ai_output.get("priority_level"),
-            urgency_score=ai_output.get("urgency_score"),
-            condition=ai_output.get("condition"),
+            priority=priority,
+            urgency_score=urgency_score,
+            condition=condition,
             category=ai_output.get("category"),
             is_critical=bool(ai_output.get("is_critical", False)),
             explanation=ai_output.get("explanation", []),
@@ -106,6 +108,39 @@ def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=
             critical_keywords=ai_output.get("critical_keywords", []),
             metadata=metadata,
         )
+
+        # Real-time Broadcasts
+        try:
+            broadcast_patient_created(submission.id, priority, urgency_score)
+            broadcast_queue_snapshot(submission.id)
+        except Exception as b_exc:
+            logging.getLogger("triage.realtime").warning("Real-time broadcast failed: %s", b_exc)
+
+        # Notifications
+        try:
+            # Notify patient
+            NotificationService.create_notification(
+                user=user,
+                notification_type="triage_status_change",
+                title="Triage Submission Received",
+                message=f"Your triage submission has been received and assigned priority {priority}.",
+                metadata={"submission_id": submission.id, "priority": priority, "source": source}
+            )
+
+            # Notify staff for critical cases
+            if priority == 1:
+                available_staff = User.objects.filter(role__in=["doctor", "nurse", "admin"])
+                NotificationService.create_bulk_notifications(
+                    users=available_staff,
+                    notification_type="critical_alert",
+                    title="CRITICAL ALERT",
+                    message=f"Critical triage submission (ID: {submission.id}) from {patient.name}.",
+                    metadata={"submission_id": submission.id, "condition": condition}
+                )
+        except Exception as n_exc:
+            logging.getLogger("triage.notifications").warning("Notification delivery failed: %s", n_exc)
+
+        return submission
     except Exception as exc:
         logger = logging.getLogger("triage.persistence")
         logger.warning("Failed to persist AI triage submission: %s", exc)
@@ -115,16 +150,19 @@ def _persist_ai_submission(request, symptoms, ai_output, source, extra_metadata=
 def is_relevant(text):
     if not text or not isinstance(text, str):
         return False
-    keywords = [
-        "pain", "fever", "cough", "fracture", "bleeding", "shortness of breath", "dizzy", "vomiting", "rash", "injury", "trauma", "stroke", "cardiac", "chest", "headache", "infection", "wound", "burn", "swelling", "seizure", "unconscious", "weakness", "nausea", "diarrhea", "palpitation", "collapse"
-    ]
-    text_lower = text.lower()
-    return any(_re.search(r"\b" + _re.escape(kw) + r"\b", text_lower) for kw in keywords)
+    return len(text.strip()) > 0
 
 
-class TriageAIView(APIView):
+
+class TriageAIView(GenericAPIView):
     permission_classes = [AllowAny]
-
+    serializer_class = TriageAIResponseSerializer
+    
+    @extend_schema(
+        request=TriageAIRequestSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Analyze symptoms and optional attachments (PDF/Image) using AI to provide triage recommendations."
+    )
     def post(self, request):
         from .services.demographic_extractor import extract_demographics_from_text, detect_conflicts
 
@@ -142,7 +180,9 @@ class TriageAIView(APIView):
                 unique_name = f"triage_attachments/{uuid.uuid4().hex}_{getattr(image_file, 'name', 'upload') }"
                 saved_name = default_storage.save(unique_name, image_file)
                 try:
-                    image_url = default_storage.url(saved_name)
+                    relative_url = default_storage.url(saved_name)
+                    api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+                    image_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
                 except Exception:
                     # If the storage backend doesn't provide a URL, fall back to the saved path
                     image_url = saved_name
@@ -240,12 +280,6 @@ class TriageAIView(APIView):
         if blood_type in (None, ""):
             warnings.append("blood_type_missing")
 
-        if error:
-            return Response({
-                "error": "Missing symptoms.",
-                "message": "Please provide at least one symptom to proceed."
-            }, status=status.HTTP_400_BAD_REQUEST)
-
         if isinstance(symptoms, str) and len(symptoms) > MAX_INPUT_LENGTH:
             return Response({
                 "error": "Symptoms too long.",
@@ -315,12 +349,7 @@ SUPPLEMENTARY PDF CONTENT:
 
                 result = normalize_ai_response(result)
             else:
-                # If we have a textual symptoms prompt, validate relevance.
-                if not is_relevant(symptoms):
-                    return Response({
-                        "error": "Input not relevant.",
-                        "message": "Please provide symptoms or information related to a medical triage situation."
-                    }, status=status.HTTP_400_BAD_REQUEST)
+
 
                 try:
                     result = get_triage_recommendation(
@@ -361,10 +390,20 @@ SUPPLEMENTARY PDF CONTENT:
                 "error_types": result.get("error_types", []),
             }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        # Extract and normalize the AI contract based on the response format (Member 6 nested vs flat)
+        ai_contract = result.get("data", {}).get("ai_contract", result)
+        ai_contract = normalize_ai_response(ai_contract)
+        
         expected_fields = [
-            "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason"
+            "priority_level", "urgency_score", "condition", "category", "is_critical", "explanation", "recommended_action", "reason", "priority"
         ]
-        filtered_result = {k: v for k, v in result.items() if k in expected_fields}
+        filtered_result = {k: v for k, v in ai_contract.items() if k in expected_fields}
+        # Sync priority keys for the serializer
+        if "priority" not in filtered_result and "priority_level" in filtered_result:
+            filtered_result["priority"] = filtered_result["priority_level"]
+        elif "priority_level" not in filtered_result and "priority" in filtered_result:
+            filtered_result["priority_level"] = filtered_result["priority"]
+
         serializer = TriageAIResponseSerializer(data=filtered_result)
         if serializer.is_valid():
             response_data = dict(serializer.data)
@@ -382,10 +421,10 @@ SUPPLEMENTARY PDF CONTENT:
             enriched_output["source"] = "ai"
             if warnings:
                 enriched_output["warning"] = warnings
-            _persist_ai_submission(
+            submission = _persist_ai_submission(
                 request=request,
                 symptoms=symptoms,
-                ai_output=enriched_output,
+                ai_output=ai_contract,
                 source="AI_ENDPOINT",
                 extra_metadata={
                     "triage_inputs": {
@@ -401,6 +440,9 @@ SUPPLEMENTARY PDF CONTENT:
                 },
             )
 
+            if submission:
+                response_data["submission_id"] = submission.id
+
             return Response(response_data)
 
         logger = logging.getLogger("triage.ai")
@@ -413,9 +455,15 @@ SUPPLEMENTARY PDF CONTENT:
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class TriagePDFExtractView(APIView):
+class TriagePDFExtractView(GenericAPIView):
     permission_classes = [AllowAny]
+    serializer_class = PDFUploadSerializer
 
+    @extend_schema(
+        request=PDFUploadSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Extract symptoms from a PDF and compare with user input to provide triage recommendation."
+    )
     def post(self, request):
         import logging
         from .services.demographic_extractor import extract_demographics_from_text, detect_conflicts
@@ -568,8 +616,17 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
                 "error_types": result.get("error_types", []),
             }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        result = normalize_ai_response(result)
-        filtered_result = {k: v for k, v in result.items() if k in expected_fields}
+        # Extract and normalize the AI contract based on the response format (Member 6 nested vs flat)
+        ai_contract = result.get("data", {}).get("ai_contract", result)
+        ai_contract = normalize_ai_response(ai_contract)
+        
+        filtered_result = {k: v for k, v in ai_contract.items() if k in expected_fields}
+        # Sync priority keys for the serializer
+        if "priority" not in filtered_result and "priority_level" in filtered_result:
+            filtered_result["priority"] = filtered_result["priority_level"]
+        elif "priority_level" not in filtered_result and "priority" in filtered_result:
+            filtered_result["priority_level"] = filtered_result["priority"]
+
         serializer = TriageAIResponseSerializer(data=filtered_result)
         if serializer.is_valid():
             response_data = dict(serializer.data)
@@ -584,7 +641,7 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
             _persist_ai_submission(
                 request=request,
                 symptoms=symptoms_prompt,
-                ai_output=enriched_output,
+                ai_output=ai_contract,
                 source="PDF_TRIAGE_ENDPOINT",
                 extra_metadata={
                     "triage_inputs": {
@@ -610,9 +667,15 @@ SUPPLEMENTARY MEDICAL INFORMATION FROM PDF:
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class TriageEvaluateView(APIView):
+class TriageEvaluateView(GenericAPIView):
     permission_classes = [AllowAny]
+    serializer_class = TriageInputSerializer
 
+    @extend_schema(
+        request=TriageInputSerializer,
+        responses={200: TriageAIResponseSerializer, 400: ErrorResponseSerializer, 502: ErrorResponseSerializer},
+        description="Simple evaluation of symptoms using the rule-based or AI engine."
+    )
     def post(self, request):
         symptoms = request.data.get("symptoms", "")
         if not symptoms:
@@ -640,15 +703,9 @@ class TriageEvaluateView(APIView):
 # POST /api/v1/triage/
 # ============================================================================
 
-class TriageSubmissionView(APIView):
-    """
-    Main triage submission endpoint per API contract.
-    
-    POST /api/v1/triage/
-    Request: {"description": "Chest pain..."}
-    Response: Direct TriageItem shape (no envelope)
-    """
+class TriageSubmissionView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
+    serializer_class = TriageSubmissionSerializer
 
     def post(self, request):
         logger = logging.getLogger("triage.submission")
@@ -818,3 +875,67 @@ class TriageSubmissionView(APIView):
                 "code": "INTERNAL_SERVER_ERROR",
                 "message": "Triage processing failed"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class WaitingAnalyticsView(GenericAPIView):
+    """
+    Provides real-time analytics for a specific triage submission or the overall queue.
+    Used by the patient dashboard to show estimated wait times and SLA status.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id=None):
+        from triagesync_backend.apps.dashboard.services.wait_time_service import (
+            calculate_wait_time, get_sla_status, get_wait_time_analytics
+        )
+        from triagesync_backend.apps.patients.models import PatientSubmission
+
+        # If ID is 0 or None, return overall queue analytics
+        if id is None or str(id) == "0":
+            analytics = get_wait_time_analytics()
+            return Response(analytics)
+
+        try:
+            submission = PatientSubmission.objects.get(id=id)
+            
+            # Ensure patient can only see their own analytics (unless staff)
+            if request.user.role == "patient":
+                if not hasattr(request.user, "patient_profile") or submission.patient != request.user.patient_profile:
+                    return Response({"error": "Unauthorized"}, status=403)
+
+            wait_time = calculate_wait_time(submission)
+            sla_status = get_sla_status(wait_time)
+            
+            # Calculate dynamic queue position
+            active_queue = PatientSubmission.objects.filter(
+                status__in=["waiting", "in_progress"]
+            ).order_by("priority", "-urgency_score", "created_at")
+            
+            position = 0
+            found = False
+            for idx, item in enumerate(active_queue):
+                if item.id == submission.id:
+                    position = idx + 1
+                    found = True
+                    break
+            
+            return Response({
+                "submission_id": submission.id,
+                "wait_time_minutes": wait_time,
+                "sla_status": sla_status,
+                "queue_position": position if found else None,
+                "total_in_queue": active_queue.count(),
+                "status": submission.status,
+                "is_active": found
+            })
+            
+        except PatientSubmission.DoesNotExist:
+            return Response({
+                "error": "Submission not found",
+                "message": f"No triage submission found with ID {id}"
+            }, status=404)
+        except Exception as e:
+            return Response({
+                "error": "Analytics failed",
+                "message": str(e)
+            }, status=500)

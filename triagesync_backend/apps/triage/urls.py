@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import TriageAIView, TriageEvaluateView, TriageSubmissionView
+from .views import TriageAIView, TriageEvaluateView, TriageSubmissionView, WaitingAnalyticsView
 from triagesync_backend.apps.patients.clinical_views import (
     ClinicalVerificationView,
     StaffNoteView,
@@ -12,8 +12,9 @@ urlpatterns = [
     path("", TriageSubmissionView.as_view(), name='triage-submit'),
     
     # Combined AI triage endpoint
-    path('ai/', TriageAIView.as_view(), name='triage-ai'),
+    path("ai/", TriageAIView.as_view(), name='triage-ai'),
     path("evaluate/", TriageEvaluateView.as_view(), name='triage-evaluate'),
+    path("<int:id>/waiting-analytics/", WaitingAnalyticsView.as_view(), name='waiting-analytics'),
     
     # Clinical Workflow (Staff only)
     path("<int:submission_id>/verify/", ClinicalVerificationView.as_view(), name="clinical-verify"),

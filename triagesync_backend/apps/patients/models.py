@@ -94,6 +94,14 @@ class PatientSubmission(models.Model):
     def __str__(self) -> str:
         return f"Submission {self.id} by {self.patient.name}"
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["priority", "-urgency_score", "created_at"], name="patientsub_queue_idx"),
+            models.Index(fields=["status", "created_at"], name="patientsub_stat_created_idx"),
+            models.Index(fields=["category", "created_at"], name="patientsub_cat_cr_idx"),
+            models.Index(fields=["processed_at"], name="patientsub_processed_idx"),
+        ]
+
 
 class StaffNote(models.Model):
     submission = models.ForeignKey(PatientSubmission, on_delete=models.CASCADE, related_name="notes")

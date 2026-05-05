@@ -3,6 +3,8 @@
 .env.*
 .envrc
 .DS_Store
+triagesync_backend/staticfiles/
+
 
 # Test output, coverage, and cache
 .pytest_cache/
@@ -284,6 +286,12 @@ test_api_ai.py
 test_env.py
 test_gemini_key.py
 test_integration_websocket_events.py.new
+
+# Additional test and development files
+conftest.py
+pytest_test.ini
+profile_photos/
+triage_attachments/
 
 # Keep organized project folders tracked
 !docs/

@@ -19,10 +19,16 @@ class AuditLogSerializer(serializers.ModelSerializer):
         fields = ['id', 'timestamp', 'actor_name', 'action_type', 'target_description', 'justification', 'metadata']
 
 class RoleUpdateSerializer(serializers.Serializer):
-    """
-    Serializer for admin role updates.
-    """
     role = serializers.ChoiceField(
         choices=['patient', 'nurse', 'doctor', 'admin', 'staff'],
         required=True
     )
+
+class SystemConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemConfig
+        fields = ['key', 'value']
+
+class SuspendUserSerializer(serializers.Serializer):
+    is_suspended = serializers.BooleanField(required=True)
+    reason = serializers.CharField(required=False, allow_blank=True)

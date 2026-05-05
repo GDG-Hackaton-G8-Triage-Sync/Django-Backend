@@ -1,9 +1,11 @@
-﻿from rest_framework.views import APIView
+from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 from triagesync_backend.apps.authentication.permissions import IsPatient
 from triagesync_backend.apps.core.pagination import StandardResultsSetPagination
@@ -12,6 +14,8 @@ from .models import Patient, PatientSubmission
 from .serializers import PatientSubmissionSerializer
 from .utils import validate_profile_photo
 from triagesync_backend.apps.dashboard.services.wait_time_service import calculate_wait_time, get_sla_status
+from triagesync_backend.apps.core.serializers import ErrorResponseSerializer
+from triagesync_backend.apps.authentication.serializers import GenericProfileSerializer
 
 import logging
 
@@ -93,9 +97,12 @@ def _estimate_wait_range_minutes(submission, queue_position, total_active_cases)
 
 def _build_patient_queue_payload(patient):
     active_queue = list(_get_active_queue_queryset())
-    patient_active_queue = [submission for submission in active_queue if submission.patient_id == patient.id]
-
-    current_submission = patient_active_queue[0] if patient_active_queue else PatientSubmission.objects.filter(patient=patient).order_by("-created_at").first()
+    # Pre-index active_queue for faster lookup
+    active_map = {submission.id: index for index, submission in enumerate(active_queue, start=1)}
+    
+    patient_active_submissions = [sub for sub in active_queue if sub.patient_id == patient.id]
+    
+    current_submission = patient_active_submissions[0] if patient_active_submissions else PatientSubmission.objects.filter(patient=patient).order_by("-created_at").first()
     if not current_submission:
         return {
             "current_submission": None,
@@ -113,13 +120,7 @@ def _build_patient_queue_payload(patient):
             "message": "No active queue item found",
         }
 
-    queue_position = None
-    if current_submission.status in ACTIVE_QUEUE_STATUSES:
-        for index, submission in enumerate(active_queue, start=1):
-            if submission.id == current_submission.id:
-                queue_position = index
-                break
-
+    queue_position = active_map.get(current_submission.id)
     status_summary = _build_queue_steps(current_submission.status)
     wait_time_minutes = calculate_wait_time(current_submission)
     estimated_wait_range = _estimate_wait_range_minutes(current_submission, queue_position, len(active_queue))
@@ -176,15 +177,10 @@ def _build_patient_queue_payload(patient):
     }
 
 
-class PatientProfileView(APIView):
-    """
-    Patient profile management endpoint.
-    
-    GET /api/v1/patients/profile/ - Get patient profile
-    PATCH /api/v1/patients/profile/ - Update patient profile
-    """
+class PatientProfileView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
-    
+    serializer_class = GenericProfileSerializer
+
     def get_or_create_patient(self, user):
         """Get or create patient profile for user."""
         try:
@@ -200,6 +196,13 @@ class PatientProfileView(APIView):
     def get(self, request):
         """Get authenticated patient's profile."""
         patient = self.get_or_create_patient(request.user)
+        
+        api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+        profile_photo_url = None
+        if getattr(patient, "profile_photo", None):
+            relative_url = patient.profile_photo.url
+            profile_photo_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
+            
         return Response({
             "id": patient.id,
             "name": patient.name,
@@ -208,10 +211,15 @@ class PatientProfileView(APIView):
             "user_id": patient.user.id,
             "username": patient.user.username,
             "email": patient.user.email,
-            "profile_photo": patient.profile_photo.url if getattr(patient, "profile_photo", None) else None,
+            "profile_photo": profile_photo_url,
             "profile_photo_name": getattr(patient, "profile_photo_name", None),
         }, status=status.HTTP_200_OK)
     
+    @extend_schema(
+        request=GenericProfileSerializer,
+        responses={200: GenericProfileSerializer, 400: ErrorResponseSerializer},
+        description="Update authenticated patient's profile."
+    )
     def patch(self, request):
         """Update authenticated patient's profile."""
         patient = self.get_or_create_patient(request.user)
@@ -295,51 +303,26 @@ class PatientProfileView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class PatientHistoryView(APIView):
-    """
-    Patient submission history endpoint with pagination.
-    
-    GET /api/v1/patients/history/ - Get all patient's triage submissions
-    Query params: page, page_size (default 20, max 100)
-    """
+class PatientHistoryView(ListAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     pagination_class = StandardResultsSetPagination
-    
-    def get(self, request):
-        """Get authenticated patient's submission history with pagination."""
+    serializer_class = PatientSubmissionSerializer
+
+    def get_queryset(self):
         try:
-            patient = request.user.patient_profile
+            patient = self.request.user.patient_profile
         except Patient.DoesNotExist:
-            # No patient profile means no submissions
-            return Response({
-                "count": 0,
-                "next": None,
-                "previous": None,
-                "results": []
-            }, status=status.HTTP_200_OK)
+            return PatientSubmission.objects.none()
         
-        # Get all submissions for this patient, ordered by most recent first
-        submissions = PatientSubmission.objects.filter(
-            patient=patient
-        ).order_by('-created_at')
-        
-        # Apply pagination
-        paginator = self.pagination_class()
-        paginated_submissions = paginator.paginate_queryset(submissions, request)
-        
-        # Use PatientSubmissionSerializer for patient-facing history
-        serializer = PatientSubmissionSerializer(paginated_submissions, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return PatientSubmission.objects.filter(patient=patient).order_by('-created_at')
 
 
-class PatientSubmissionDetailView(APIView):
-    """
-    Patient submission detail endpoint.
-    
-    GET /api/v1/patients/submissions/{id}/ - Get specific submission details
-    """
+class PatientSubmissionDetailView(GenericAPIView):
     permission_classes = [IsAuthenticated]
-    
+    serializer_class = PatientSubmissionSerializer
+    queryset = PatientSubmission.objects.all()
+    lookup_url_kwarg = 'submission_id'
+
     def get(self, request, submission_id):
         """Get specific submission details."""
         try:
@@ -367,12 +350,7 @@ class PatientSubmissionDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class PatientCurrentSessionView(APIView):
-    """
-    Patient current/active session endpoint.
-    
-    GET /api/v1/patients/current/ - Get patient's most recent active submission
-    """
+class PatientCurrentSessionView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def get(self, request):
@@ -389,7 +367,7 @@ class PatientCurrentSessionView(APIView):
         return Response(payload, status=status.HTTP_200_OK)
 
 
-class PatientQueueView(APIView):
+class PatientQueueView(GenericAPIView):
     """
     Patient queue endpoint.
 
@@ -423,19 +401,7 @@ class PatientQueueView(APIView):
 
 
 
-class TriageSubmissionsHistoryView(APIView):
-    """
-    Triage submissions history retrieval endpoint.
-    
-    GET /api/v1/triage-submissions/
-    - Patients: Returns only their own submissions
-    - Staff: Returns all submissions or filtered by email query param
-    
-    Query params:
-        - email (optional): Filter by patient email (staff only)
-    
-    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7
-    """
+class TriageSubmissionsHistoryView(ListAPIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
@@ -473,14 +439,7 @@ class TriageSubmissionsHistoryView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class ProfilePhotoUploadView(APIView):
-    """
-    Profile photo upload endpoint.
-    
-    POST /api/v1/patients/profile/photo/ - Upload profile photo
-    
-    Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 9.1, 9.2, 9.3
-    """
+class ProfilePhotoUploadView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def post(self, request):
@@ -525,21 +484,18 @@ class ProfilePhotoUploadView(APIView):
         
         logger.info(f"Uploaded profile photo for patient {patient.id}")
         
+        api_base_url = os.getenv("API_BASE_URL", "").rstrip("/")
+        relative_url = patient.profile_photo.url
+        profile_photo_url = f"{api_base_url}{relative_url}" if api_base_url else request.build_absolute_uri(relative_url)
+        
         return Response({
             "message": "Profile photo uploaded successfully",
-            "profile_photo": request.build_absolute_uri(patient.profile_photo.url) if patient.profile_photo else None,
+            "profile_photo": profile_photo_url,
             "profile_photo_name": patient.profile_photo_name
         }, status=status.HTTP_200_OK)
 
 
-class ProfilePhotoDeleteView(APIView):
-    """
-    Profile photo deletion endpoint.
-    
-    DELETE /api/v1/patients/profile/photo/ - Delete profile photo
-    
-    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 9.4
-    """
+class ProfilePhotoDeleteView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPatient]
     
     def delete(self, request):
